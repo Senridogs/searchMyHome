@@ -2,8 +2,8 @@ name: 賃貸物件チェック
 
 on:
   schedule:
-    # 毎日JST 9:00 (UTC 0:00) に実行
-    - cron: '0 0 * * *'
+    # 毎日JST 18:00 (UTC 9:00) に実行
+    - cron: '0 9 * * *'
   workflow_dispatch: # 手動実行も可能
 
 permissions:
@@ -36,14 +36,23 @@ jobs:
           BODY=$(cat data/report.md)
           gh issue create --title "$TITLE" --body "$BODY" --label "新着物件"
 
-      - name: Send LINE notification
+      - name: Send LINE notification (new listings)
         if: steps.check.outcome == 'success' && vars.LINE_NOTIFY_TOKEN != ''
         env:
           LINE_TOKEN: ${{ vars.LINE_NOTIFY_TOKEN }}
         run: |
-          # Extract count from report
           COUNT=$(grep -oP '新着 \K\d+' data/report.md || echo "0")
-          MSG=$(printf "\n🏠 新着物件 ${COUNT}件\n\n詳細はGitHub Issueを確認:\nhttps://github.com/${{ github.repository }}/issues")
+          MSG=$(printf "\n🏠 新着物件 ${COUNT}件あります！\n\n詳細はGitHub Issueを確認:\nhttps://github.com/${{ github.repository }}/issues")
+          curl -s -X POST https://notify-api.line.me/api/notify \
+            -H "Authorization: Bearer ${LINE_TOKEN}" \
+            -F "message=${MSG}"
+
+      - name: Send LINE notification (no new listings)
+        if: steps.check.outcome == 'failure' && vars.LINE_NOTIFY_TOKEN != ''
+        env:
+          LINE_TOKEN: ${{ vars.LINE_NOTIFY_TOKEN }}
+        run: |
+          MSG=$(printf "\n🏠 本日の新着物件はありませんでした。")
           curl -s -X POST https://notify-api.line.me/api/notify \
             -H "Authorization: Bearer ${LINE_TOKEN}" \
             -F "message=${MSG}"
