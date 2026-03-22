@@ -37,25 +37,39 @@ jobs:
           gh issue create --title "$TITLE" --body "$BODY" --label "新着物件"
 
       - name: Send LINE notification (new listings)
-        if: steps.check.outcome == 'success' && vars.LINE_NOTIFY_TOKEN != ''
+        if: steps.check.outcome == 'success' && vars.LINE_CHANNEL_ACCESS_TOKEN != ''
         env:
-          LINE_TOKEN: ${{ vars.LINE_NOTIFY_TOKEN }}
+          LINE_TOKEN: ${{ vars.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ vars.LINE_USER_ID }}
         run: |
           COUNT=$(grep -oP '新着 \K\d+' data/report.md || echo "0")
-          MSG=$(printf "\n🏠 新着物件 ${COUNT}件あります！\n\n詳細はGitHub Issueを確認:\nhttps://github.com/${{ github.repository }}/issues")
-          curl -s -X POST https://notify-api.line.me/api/notify \
+          curl -s -X POST https://api.line.me/v2/bot/message/push \
+            -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${LINE_TOKEN}" \
-            -F "message=${MSG}"
+            -d "{
+              \"to\": \"${LINE_USER_ID}\",
+              \"messages\": [{
+                \"type\": \"text\",
+                \"text\": \"🏠 新着物件 ${COUNT}件あります！\n\n詳細はGitHub Issueを確認:\nhttps://github.com/${{ github.repository }}/issues\"
+              }]
+            }"
 
       - name: Send LINE notification (no new listings)
-        if: steps.check.outcome == 'failure' && vars.LINE_NOTIFY_TOKEN != ''
+        if: steps.check.outcome == 'failure' && vars.LINE_CHANNEL_ACCESS_TOKEN != ''
         env:
-          LINE_TOKEN: ${{ vars.LINE_NOTIFY_TOKEN }}
+          LINE_TOKEN: ${{ vars.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ vars.LINE_USER_ID }}
         run: |
-          MSG=$(printf "\n🏠 本日の新着物件はありませんでした。")
-          curl -s -X POST https://notify-api.line.me/api/notify \
+          curl -s -X POST https://api.line.me/v2/bot/message/push \
+            -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${LINE_TOKEN}" \
-            -F "message=${MSG}"
+            -d "{
+              \"to\": \"${LINE_USER_ID}\",
+              \"messages\": [{
+                \"type\": \"text\",
+                \"text\": \"🏠 本日の新着物件はありませんでした。\"
+              }]
+            }"
 
       - name: Commit updated data
         run: |
