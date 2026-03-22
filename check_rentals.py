@@ -15,7 +15,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Ensure project root is on path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -183,18 +183,30 @@ def _write_line_message(new_properties, is_first_run, path):
         f.write(text)
 
 
+def _load_seen_history(path, retention_days=7):
+    """Load seen property history, pruning entries older than retention_days."""
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        history = json.load(f)
+    cutoff = (datetime.now() - timedelta(days=retention_days)).isoformat()
+    return {k: v for k, v in history.items() if v >= cutoff}
+
+
+def _save_seen_history(path, history):
+    """Save seen property history to file."""
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
 
-    # Load previous data
-    prev_path = os.path.join(DATA_DIR, "previous.json")
-    prev_keys = set()
-    if os.path.exists(prev_path):
-        with open(prev_path, "r", encoding="utf-8") as f:
-            prev_data = json.load(f)
-        prev_keys = {_prop_key(p) for p in prev_data.get("properties", [])}
+    # Load seen history (property keys seen in the last 7 days)
+    history_path = os.path.join(DATA_DIR, "seen_history.json")
+    seen_history = _load_seen_history(history_path)
 
-    is_first_run = len(prev_keys) == 0
+    is_first_run = len(seen_history) == 0
 
     # Fetch and parse all sites
     all_properties = []
@@ -251,11 +263,13 @@ def main():
     with open(latest_path, "w", encoding="utf-8") as f:
         json.dump(current_data, f, ensure_ascii=False, indent=2)
 
-    # Diff: find new listings (using property name + address as identity)
-    current_keys = {_prop_key(p) for p in unique_properties}
-    new_keys = current_keys - prev_keys
+    # Diff: find new listings (not seen in the last 7 days)
+    now_iso = datetime.now().isoformat()
+    new_properties = [p for p in unique_properties if _prop_key(p) not in seen_history]
 
-    new_properties = [p for p in unique_properties if _prop_key(p) in new_keys]
+    # Update seen history with all current properties
+    for p in unique_properties:
+        seen_history[_prop_key(p)] = now_iso
 
     if is_first_run:
         print(f"\n初回実行のためレポートなし。{len(unique_properties)}件のデータを保存しました。")
@@ -287,9 +301,8 @@ def main():
     line_path = os.path.join(DATA_DIR, "line_message.txt")
     _write_line_message(new_properties, is_first_run, line_path)
 
-    # Copy latest to previous for next run
-    with open(prev_path, "w", encoding="utf-8") as f:
-        json.dump(current_data, f, ensure_ascii=False, indent=2)
+    # Save seen history (keeps last 7 days)
+    _save_seen_history(history_path, seen_history)
 
     print("完了。")
     return len(new_properties)
