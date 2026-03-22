@@ -25,6 +25,7 @@ from parse_smocca import parse_smocca, get_next_page_url_smocca
 from parse_petadpark import parse_petadpark, get_next_page_url_petadpark
 from parse_airdoor import parse_airdoor, get_next_page_url_airdoor
 from parse_rstore import parse_rstore, get_next_page_url_rstore
+from parse_pethomeweb import parse_pethomeweb, get_next_page_url_pethomeweb
 from parse_petkachintai import parse_petkachintai, get_next_page_url_petkachintai
 
 HEADERS = [
@@ -106,13 +107,13 @@ def main():
     site_counts = {}
 
     # Site configs: (name, parse_fn, next_page_fn)
-    # Note: ペットホームウェブ is excluded - property data is loaded via JS only
     site_configs = [
         ("賃貸EX", parse_chintai_ex, get_next_page_url_chintai_ex),
         ("スモッカ", parse_smocca, get_next_page_url_smocca),
         ("ペットアドパーク", parse_petadpark, get_next_page_url_petadpark),
         ("AirDoor", parse_airdoor, get_next_page_url_airdoor),
         ("R-STORE", parse_rstore, get_next_page_url_rstore),
+        ("ペットホームウェブ", parse_pethomeweb, get_next_page_url_pethomeweb),
         ("ペット可賃貸.net", parse_petkachintai, get_next_page_url_petkachintai),
     ]
 
