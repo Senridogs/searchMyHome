@@ -89,6 +89,47 @@ def fetch_all_pages(site_name, first_url, parse_fn, next_page_fn, max_pages=5):
     return all_props
 
 
+def _write_markdown_report(new_properties, removed_urls, all_properties, is_first_run, path):
+    """Write a markdown report of new listings to a file."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    lines = [f"# 新着物件レポート ({now})\n"]
+
+    if is_first_run:
+        lines.append(f"初回実行: {len(all_properties)}件のデータを保存しました。\n")
+    elif not new_properties:
+        lines.append("新着物件はありませんでした。\n")
+    else:
+        lines.append(f"**新着 {len(new_properties)}件** / 掲載終了 {len(removed_urls)}件\n")
+        lines.append("---\n")
+        for p in new_properties:
+            name = p.get('property_name', '不明')
+            url = p.get('detail_url', '')
+            rent = p.get('rent', '?')
+            mgmt = p.get('management_fee', '?')
+            plan = p.get('floor_plan', '?')
+            area = p.get('area_sqm', p.get('area', '?'))
+            line = p.get('railway_line', '')
+            station = p.get('nearest_station', '?')
+            walk = p.get('walk_minutes', '?')
+            addr = p.get('address', '?')
+            pet = p.get('pet_conditions', '?')
+            site = p.get('source_site', '?')
+
+            lines.append(f"### [{name}]({url})\n")
+            lines.append(f"| 項目 | 内容 |")
+            lines.append(f"|------|------|")
+            lines.append(f"| 家賃 | {rent}（管理費 {mgmt}） |")
+            lines.append(f"| 間取り | {plan} / {area} |")
+            lines.append(f"| 最寄駅 | {line} {station} 徒歩{walk}分 |")
+            lines.append(f"| 住所 | {addr} |")
+            lines.append(f"| ペット | {pet} |")
+            lines.append(f"| サイト | {site} |")
+            lines.append("")
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -162,6 +203,8 @@ def main():
     new_urls = current_urls - prev_urls
     removed_urls = prev_urls - current_urls
 
+    new_properties = [p for p in unique_properties if p.get("detail_url") in new_urls]
+
     if is_first_run:
         print(f"\n初回実行のためレポートなし。{len(unique_properties)}件のデータを保存しました。")
     else:
@@ -169,29 +212,36 @@ def main():
         print(f"  新着: {len(new_urls)}件")
         print(f"  掲載終了: {len(removed_urls)}件")
 
-        if new_urls:
+        if new_properties:
             print(f"\n=== 新着物件 ===\n")
-            for p in unique_properties:
-                if p.get("detail_url") in new_urls:
-                    print(f"【新着】{p.get('property_name', '不明')}")
-                    print(f"  家賃: {p.get('rent', '?')}（管理費{p.get('management_fee', '?')}）")
-                    print(f"  間取り: {p.get('floor_plan', '?')} / {p.get('area_sqm', p.get('area', '?'))}")
-                    station = p.get('nearest_station', '?')
-                    walk = p.get('walk_minutes', '?')
-                    line = p.get('railway_line', '')
-                    print(f"  最寄駅: {line} {station} 徒歩{walk}分")
-                    print(f"  住所: {p.get('address', '?')}")
-                    print(f"  ペット: {p.get('pet_conditions', '?')}")
-                    print(f"  サイト: {p.get('source_site', '?')}")
-                    print(f"  URL: {p.get('detail_url', '')}")
-                    print()
+            for p in new_properties:
+                print(f"【新着】{p.get('property_name', '不明')}")
+                print(f"  家賃: {p.get('rent', '?')}（管理費{p.get('management_fee', '?')}）")
+                print(f"  間取り: {p.get('floor_plan', '?')} / {p.get('area_sqm', p.get('area', '?'))}")
+                station = p.get('nearest_station', '?')
+                walk = p.get('walk_minutes', '?')
+                line = p.get('railway_line', '')
+                print(f"  最寄駅: {line} {station} 徒歩{walk}分")
+                print(f"  住所: {p.get('address', '?')}")
+                print(f"  ペット: {p.get('pet_conditions', '?')}")
+                print(f"  サイト: {p.get('source_site', '?')}")
+                print(f"  URL: {p.get('detail_url', '')}")
+                print()
+
+    # Write markdown report for CI/GitHub Issue usage
+    md_path = os.path.join(DATA_DIR, "report.md")
+    _write_markdown_report(new_properties, removed_urls, unique_properties, is_first_run, md_path)
 
     # Copy latest to previous for next run
     with open(prev_path, "w", encoding="utf-8") as f:
         json.dump(current_data, f, ensure_ascii=False, indent=2)
 
     print("完了。")
+    return len(new_properties)
 
 
 if __name__ == "__main__":
-    main()
+    new_count = main()
+    # Exit with code 0 if new listings found (for CI), 1 if none
+    # This lets GitHub Actions conditionally create issues
+    sys.exit(0 if new_count else 1)
