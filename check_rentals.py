@@ -130,6 +130,46 @@ def _write_markdown_report(new_properties, removed_urls, all_properties, is_firs
         f.write("\n".join(lines))
 
 
+def _write_line_message(new_properties, removed_urls, is_first_run, path):
+    """Write a plain-text message for LINE notification with property details."""
+    if is_first_run or not new_properties:
+        # No detailed message needed for these cases
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("")
+        return
+
+    lines = [f"🏠 新着物件 {len(new_properties)}件\n"]
+
+    for p in new_properties:
+        name = p.get('property_name', '不明')
+        rent = p.get('rent', '?')
+        mgmt = p.get('management_fee', '')
+        plan = p.get('floor_plan', '?')
+        area = p.get('area_sqm', p.get('area', '?'))
+        station = p.get('nearest_station', '?')
+        walk = p.get('walk_minutes', '?')
+        url = p.get('detail_url', '')
+
+        mgmt_str = f"(管理費{mgmt})" if mgmt and mgmt != '?' else ""
+        lines.append(f"━━━━━━━━━━")
+        lines.append(f"📍 {name}")
+        lines.append(f"💰 {rent}{mgmt_str}")
+        lines.append(f"🏠 {plan} / {area}")
+        lines.append(f"🚶 {station} 徒歩{walk}分")
+        if url:
+            lines.append(f"🔗 {url}")
+        lines.append("")
+
+    # LINE text message limit is 5000 chars
+    text = "\n".join(lines)
+    if len(text) > 4900:
+        # Truncate and add note
+        text = text[:4800] + "\n\n...他にもあります。詳細はGitHub Issueを確認してください。"
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -231,6 +271,10 @@ def main():
     # Write markdown report for CI/GitHub Issue usage
     md_path = os.path.join(DATA_DIR, "report.md")
     _write_markdown_report(new_properties, removed_urls, unique_properties, is_first_run, md_path)
+
+    # Write LINE notification text
+    line_path = os.path.join(DATA_DIR, "line_message.txt")
+    _write_line_message(new_properties, removed_urls, is_first_run, line_path)
 
     # Copy latest to previous for next run
     with open(prev_path, "w", encoding="utf-8") as f:

@@ -43,7 +43,12 @@ jobs:
           LINE_TOKEN: ${{ vars.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_USER_ID: ${{ vars.LINE_USER_ID }}
         run: |
-          COUNT=$(grep -oP '新着 \K\d+' data/report.md || echo "0")
+          MSG=$(cat data/line_message.txt)
+          if [ -z "$MSG" ]; then
+            MSG="🏠 新着物件があります！"
+          fi
+          # Escape for JSON
+          MSG_JSON=$(echo "$MSG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))")
           curl -s -X POST https://api.line.me/v2/bot/message/push \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${LINE_TOKEN}" \
@@ -51,7 +56,7 @@ jobs:
               \"to\": \"${LINE_USER_ID}\",
               \"messages\": [{
                 \"type\": \"text\",
-                \"text\": \"🏠 新着物件 ${COUNT}件あります！\n\n詳細はGitHub Issueを確認:\nhttps://github.com/${{ github.repository }}/issues\"
+                \"text\": ${MSG_JSON}
               }]
             }"
 
