@@ -149,6 +149,7 @@ def _write_line_message(new_properties, removed_urls, is_first_run, path):
         station = p.get('nearest_station', '?')
         walk = p.get('walk_minutes', '?')
         url = p.get('detail_url', '')
+        site = p.get('source_site', '')
 
         mgmt_str = f"(管理費{mgmt})" if mgmt and mgmt != '?' else ""
         lines.append(f"━━━━━━━━━━")
@@ -156,15 +157,16 @@ def _write_line_message(new_properties, removed_urls, is_first_run, path):
         lines.append(f"💰 {rent}{mgmt_str}")
         lines.append(f"🏠 {plan} / {area}")
         lines.append(f"🚶 {station} 徒歩{walk}分")
+        if site:
+            lines.append(f"📋 {site}")
         if url:
             lines.append(f"🔗 {url}")
         lines.append("")
 
-    # LINE text message limit is 5000 chars
+    # LINE Push Message limit: 5 messages, each up to 5000 chars
     text = "\n".join(lines)
     if len(text) > 4900:
-        # Truncate and add note
-        text = text[:4800] + "\n\n...他にもあります。詳細はGitHub Issueを確認してください。"
+        text = text[:4800] + "\n\n…他にもあります。GitHub Issueで全件確認できます。"
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
