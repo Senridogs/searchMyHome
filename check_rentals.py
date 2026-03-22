@@ -47,7 +47,7 @@ URLS = {
     "ペット可賃貸.net": "https://petkachintai.net/archives/category/pet-friendly-rentals-in-tokyo",
 }
 
-# Max pages per site (petkachintai limited to 1)
+# Max pages per site
 MAX_PAGES = {
     "ペット可賃貸.net": 1,
 }
@@ -69,7 +69,18 @@ def curl_fetch(url: str) -> str | None:
     return None
 
 
-def fetch_all_pages(site_name, first_url, parse_fn, next_page_fn, max_pages=5):
+def _prop_key(p):
+    """Generate a stable identity key for a property (name + address).
+
+    Some sites change URLs between fetches for the same property,
+    so we use property name + address instead of URL for deduplication.
+    """
+    name = p.get("property_name", "")
+    addr = p.get("address", "")
+    return f"{name}|{addr}"
+
+
+def fetch_all_pages(site_name, first_url, parse_fn, next_page_fn, max_pages=30):
     """Fetch all pages for a site, returning combined property list."""
     all_props = []
     url = first_url
@@ -89,7 +100,7 @@ def fetch_all_pages(site_name, first_url, parse_fn, next_page_fn, max_pages=5):
     return all_props
 
 
-def _write_markdown_report(new_properties, removed_urls, all_properties, is_first_run, path):
+def _write_markdown_report(new_properties, all_properties, is_first_run, path):
     """Write a markdown report of new listings to a file."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     lines = [f"# 新着物件レポート ({now})\n"]
@@ -99,7 +110,7 @@ def _write_markdown_report(new_properties, removed_urls, all_properties, is_firs
     elif not new_properties:
         lines.append("新着物件はありませんでした。\n")
     else:
-        lines.append(f"**新着 {len(new_properties)}件** / 掲載終了 {len(removed_urls)}件\n")
+        lines.append(f"**新着 {len(new_properties)}件**\n")
         lines.append("---\n")
         for p in new_properties:
             name = p.get('property_name', '不明')
@@ -130,7 +141,7 @@ def _write_markdown_report(new_properties, removed_urls, all_properties, is_firs
         f.write("\n".join(lines))
 
 
-def _write_line_message(new_properties, removed_urls, is_first_run, path):
+def _write_line_message(new_properties, is_first_run, path):
     """Write a plain-text message for LINE notification with property details."""
     if is_first_run or not new_properties:
         # No detailed message needed for these cases
@@ -177,13 +188,13 @@ def main():
 
     # Load previous data
     prev_path = os.path.join(DATA_DIR, "previous.json")
-    prev_urls = set()
+    prev_keys = set()
     if os.path.exists(prev_path):
         with open(prev_path, "r", encoding="utf-8") as f:
             prev_data = json.load(f)
-        prev_urls = {p["detail_url"] for p in prev_data.get("properties", [])}
+        prev_keys = {_prop_key(p) for p in prev_data.get("properties", [])}
 
-    is_first_run = len(prev_urls) == 0
+    is_first_run = len(prev_keys) == 0
 
     # Fetch and parse all sites
     all_properties = []
@@ -206,7 +217,7 @@ def main():
         url = URLS.get(site_name)
         if not url:
             continue
-        max_pages = MAX_PAGES.get(site_name, 5)
+        max_pages = MAX_PAGES.get(site_name, 30)
         print(f"[{site_name}]")
         props = fetch_all_pages(site_name, url, parse_fn, next_page_fn, max_pages)
         # Add source site name
@@ -240,19 +251,17 @@ def main():
     with open(latest_path, "w", encoding="utf-8") as f:
         json.dump(current_data, f, ensure_ascii=False, indent=2)
 
-    # Diff: find new listings
-    current_urls = {p["detail_url"] for p in unique_properties if p.get("detail_url")}
-    new_urls = current_urls - prev_urls
-    removed_urls = prev_urls - current_urls
+    # Diff: find new listings (using property name + address as identity)
+    current_keys = {_prop_key(p) for p in unique_properties}
+    new_keys = current_keys - prev_keys
 
-    new_properties = [p for p in unique_properties if p.get("detail_url") in new_urls]
+    new_properties = [p for p in unique_properties if _prop_key(p) in new_keys]
 
     if is_first_run:
         print(f"\n初回実行のためレポートなし。{len(unique_properties)}件のデータを保存しました。")
     else:
         print(f"\n--- 差分 ---")
-        print(f"  新着: {len(new_urls)}件")
-        print(f"  掲載終了: {len(removed_urls)}件")
+        print(f"  新着: {len(new_keys)}件")
 
         if new_properties:
             print(f"\n=== 新着物件 ===\n")
@@ -272,11 +281,11 @@ def main():
 
     # Write markdown report for CI/GitHub Issue usage
     md_path = os.path.join(DATA_DIR, "report.md")
-    _write_markdown_report(new_properties, removed_urls, unique_properties, is_first_run, md_path)
+    _write_markdown_report(new_properties, unique_properties, is_first_run, md_path)
 
     # Write LINE notification text
     line_path = os.path.join(DATA_DIR, "line_message.txt")
-    _write_line_message(new_properties, removed_urls, is_first_run, line_path)
+    _write_line_message(new_properties, is_first_run, line_path)
 
     # Copy latest to previous for next run
     with open(prev_path, "w", encoding="utf-8") as f:
