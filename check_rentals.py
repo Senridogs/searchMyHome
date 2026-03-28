@@ -267,15 +267,17 @@ def main():
     now_iso = datetime.now().isoformat()
     new_properties = [p for p in unique_properties if _prop_key(p) not in seen_history]
 
-    # Update seen history with all current properties
+    # Add only NEW properties to seen history (don't refresh existing timestamps)
     for p in unique_properties:
-        seen_history[_prop_key(p)] = now_iso
+        key = _prop_key(p)
+        if key not in seen_history:
+            seen_history[key] = now_iso
 
     if is_first_run:
         print(f"\n初回実行のためレポートなし。{len(unique_properties)}件のデータを保存しました。")
     else:
         print(f"\n--- 差分 ---")
-        print(f"  新着: {len(new_keys)}件")
+        print(f"  新着: {len(new_properties)}件")
 
         if new_properties:
             print(f"\n=== 新着物件 ===\n")
