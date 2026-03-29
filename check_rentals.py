@@ -15,7 +15,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Ensure project root is on path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -183,14 +183,12 @@ def _write_line_message(new_properties, is_first_run, path):
         f.write(text)
 
 
-def _load_seen_history(path, retention_days=7):
-    """Load seen property history, pruning entries older than retention_days."""
+def _load_seen_history(path):
+    """Load seen property history (permanent, no expiry)."""
     if not os.path.exists(path):
         return {}
     with open(path, "r", encoding="utf-8") as f:
-        history = json.load(f)
-    cutoff = (datetime.now() - timedelta(days=retention_days)).isoformat()
-    return {k: v for k, v in history.items() if v >= cutoff}
+        return json.load(f)
 
 
 def _save_seen_history(path, history):
