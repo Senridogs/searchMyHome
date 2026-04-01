@@ -13,6 +13,7 @@ Data files:
 
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -261,9 +262,17 @@ def main():
     with open(latest_path, "w", encoding="utf-8") as f:
         json.dump(current_data, f, ensure_ascii=False, indent=2)
 
-    # Diff: find new listings (not seen in the last 7 days)
+    # Diff: find new listings (not previously seen)
     now_iso = datetime.now().isoformat()
     new_properties = [p for p in unique_properties if _prop_key(p) not in seen_history]
+
+    # Filter out properties <= 45㎡ from notifications
+    def _area_sqm(p):
+        raw = p.get("area_sqm") or p.get("area") or ""
+        m = re.search(r"[\d.]+", str(raw))
+        return float(m.group()) if m else 0.0
+
+    new_properties = [p for p in new_properties if _area_sqm(p) > 45]
 
     # Add only NEW properties to seen history (don't refresh existing timestamps)
     for p in unique_properties:
