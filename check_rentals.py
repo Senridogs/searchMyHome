@@ -274,7 +274,7 @@ def main():
         m = re.search(r"[\d.]+", str(raw))
         return float(m.group()) if m else 0.0
 
-    new_properties = [p for p in new_properties if _area_sqm(p) > 45]
+    new_properties = [p for p in new_properties if _area_sqm(p) > 45 or _area_sqm(p) == 0.0]
 
     # Add only NEW properties to seen history (don't refresh existing timestamps)
     for p in unique_properties:
