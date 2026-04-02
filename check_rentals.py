@@ -83,15 +83,16 @@ def _normalize(s):
 
 
 def _prop_key(p):
-    """Generate a stable identity key for a property (name + address).
+    """Generate a stable identity key for a property.
 
-    Some sites change URLs between fetches for the same property,
-    so we use property name + address instead of URL for deduplication.
-    Applies NFKC normalization and address truncation for stable matching.
+    Uses name + address + rent + floor_plan to distinguish different
+    units in the same building while merging cross-site duplicates.
     """
     name = _normalize(p.get("property_name", ""))
     addr = _normalize(p.get("address", ""))
-    return f"{name}|{addr}"
+    rent = re.sub(r"[^\d.]", "", str(p.get("rent", "")))
+    plan = _normalize(p.get("floor_plan", ""))
+    return f"{name}|{addr}|{rent}|{plan}"
 
 
 def fetch_all_pages(site_name, first_url, parse_fn, next_page_fn, max_pages=30):
