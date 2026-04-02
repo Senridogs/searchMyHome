@@ -71,14 +71,26 @@ def curl_fetch(url: str) -> str | None:
     return None
 
 
+def _normalize(s):
+    """Normalize text for stable comparison (NFKC, lowercase, strip address details)."""
+    import unicodedata
+    s = unicodedata.normalize("NFKC", s)
+    s = s.lower()
+    s = re.sub(r"\s+", "", s)
+    # Truncate address after 丁目 to ignore room/building number variations
+    s = re.sub(r"(丁目).*", r"\1", s)
+    return s
+
+
 def _prop_key(p):
     """Generate a stable identity key for a property (name + address).
 
     Some sites change URLs between fetches for the same property,
     so we use property name + address instead of URL for deduplication.
+    Applies NFKC normalization and address truncation for stable matching.
     """
-    name = p.get("property_name", "")
-    addr = p.get("address", "")
+    name = _normalize(p.get("property_name", ""))
+    addr = _normalize(p.get("address", ""))
     return f"{name}|{addr}"
 
 
