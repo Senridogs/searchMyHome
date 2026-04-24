@@ -28,6 +28,8 @@ from parse_airdoor import parse_airdoor, get_next_page_url_airdoor
 from parse_rstore import parse_rstore, get_next_page_url_rstore
 from parse_pethomeweb import parse_pethomeweb, get_next_page_url_pethomeweb
 from parse_petkachintai import parse_petkachintai, get_next_page_url_petkachintai
+from parse_sengawa import parse_sengawa, get_next_page_url_sengawa
+from parse_door_ac import parse_door_ac, get_next_page_url_door_ac
 
 HEADERS = [
     "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -47,6 +49,9 @@ URLS = {
     "R-STORE": "https://www.r-store.jp/search?&sb_purpose1%5B%5D=R&sb_r_max=190000&sb_price=1&sb_c%5B%5D=13101&sb_c%5B%5D=13102&sb_c%5B%5D=13103&sb_c%5B%5D=13104&sb_c%5B%5D=13105&sb_c%5B%5D=13113&sb_c%5B%5D=13106&sb_c%5B%5D=13107&sb_c%5B%5D=13109&sb_c%5B%5D=13110&sb_c%5B%5D=13111&sb_c%5B%5D=13112&sb_c%5B%5D=13114&sb_c%5B%5D=13115&sb_c%5B%5D=13120&sb_c%5B%5D=13116&sb_c%5B%5D=13117&sb_c%5B%5D=13119&sb_c%5B%5D=13204&sb_walk_from=15&sb_area_up=50&sb_floor_plan%5B%5D=1R&sb_floor_plan%5B%5D=1K&sb_floor_plan%5B%5D=1DK&sb_floor_plan%5B%5D=1LDK&sb_floor_plan%5B%5D=1SLDK&sb_floor_plan%5B%5D=2K&sb_floor_plan%5B%5D=2DK&sb_floor_plan%5B%5D=2LDK&sb_floor_plan%5B%5D=2SLDK&sb_floor_plan%5B%5D=3K&sb_floor_plan%5B%5D=3DK&sb_floor_plan%5B%5D=3LDK&sb_floor_plan%5B%5D=3SLDK&sb_floor_plan%5B%5D=4K&sb_floor_plan%5B%5D=4DK&sb_floor_plan%5B%5D=4LDK&sb_floor_plan%5B%5D=4SLDK&sb_floor_plan%5B%5D=5K%E4%BB%A5%E4%B8%8A&sb_age_of_building=25&sb_pet%5B%5D=%E5%B0%8F%E5%9E%8B%E7%8A%AC%E5%8F%AF&sb_pet%5B%5D=%E7%8C%AB%E5%8F%AF&sb_r_category%5B%5D=%E3%81%B5%E3%81%9F%E3%82%8A%E6%9A%AE%E3%82%89%E3%81%97%E5%90%91%E3%81%8D&sb_kodawari_category%5B%5D=2%E9%9A%8E%E4%BB%A5%E4%B8%8A",
     "ペットホームウェブ": "https://www.pethomeweb.com/chintai/tokyo/list/?AR2=A2_55yo-A2_54yo-A2_55t2-A2_54li-A2_54r3-A2_55fl-A2_546l-A2_55la-A2_54hv-A2_5568-A2_54dy-A2_53z4-A2_53v1-A2_55q6-A2_55id-A2_5637-A2_54bi-A2_542j-A2_54vg-A2_575r&SO=1&CH=1-33&CO=1&ME=8-18&EW=15&CN=9&KO=91-92-30-82-12-9-26",
     "ペット可賃貸.net": "https://petkachintai.net/archives/category/pet-friendly-rentals-in-tokyo",
+    "スモッカ(2)": "https://smocca.jp/search/results?city_code%5B%5D=13109&city_code%5B%5D=13112&city_code%5B%5D=13115&city_code%5B%5D=13208&cond%5Barea%5D%5Bmin%5D=50&cond%5Bbaths%5D%5B%5D=1&cond%5Bbuilt_year%5D=30&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=190000&cond%5Bconditions%5D%5B%5D=64&cond%5Blocations%5D%5B%5D=16&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=10&cond%5Bstructs%5D%5B%5D=2&cond%5Bstructs%5D%5B%5D=3&cond%5Bwalk_min%5D=15&prefecture_path=tokyo",
+    "仙川レントハウス": "https://sengawa.es-ws.jp/feature1.html",
+    "DOOR賃貸": "https://door.ac/list?utf8=%E2%9C%93&cond%5Bcities%5D%5B%5D=13109&cond%5Bcities%5D%5B%5D=13112&cond%5Bcities%5D%5B%5D=13115&cond%5Bcities%5D%5B%5D=13208&cond%5Bsort%5D=-inquiry_price&cond%5Bfee_min%5D=&cond%5Bfee_max%5D=180000&cond%5Bincluded%5D=1&cond%5Bwalk_time%5D=15&cond%5Bsqmeter_min%5D=50&cond%5Bsqmeter_max%5D=&cond%5Bage_min%5D=&cond%5Bage_max%5D=30&cond%5Bfeatures%5D%5B%5D=7",
 }
 
 # Max pages per site
@@ -74,6 +79,8 @@ def curl_fetch(url: str) -> str | None:
 def _normalize(s):
     """Normalize text for stable comparison (NFKC, lowercase, strip address details)."""
     import unicodedata
+    if not s:
+        return ""
     s = unicodedata.normalize("NFKC", s)
     s = s.lower()
     s = re.sub(r"\s+", "", s)
@@ -235,6 +242,9 @@ def main():
         ("R-STORE", parse_rstore, get_next_page_url_rstore),
         ("ペットホームウェブ", parse_pethomeweb, get_next_page_url_pethomeweb),
         ("ペット可賃貸.net", parse_petkachintai, get_next_page_url_petkachintai),
+        ("スモッカ(2)", parse_smocca, get_next_page_url_smocca),
+        ("仙川レントハウス", parse_sengawa, get_next_page_url_sengawa),
+        ("DOOR賃貸", parse_door_ac, get_next_page_url_door_ac),
     ]
 
     print(f"=== 賃貸物件チェック {datetime.now().strftime('%Y-%m-%d %H:%M')} ===\n")
