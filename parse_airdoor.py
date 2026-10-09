@@ -34,7 +34,7 @@ def parse_airdoor(html_str: str) -> list[dict]:
     # --- Step 3: Extract SearchBuilding objects -------------------------
     # These contain full building metadata (address, stations, year, etc.)
     # and a nested "rooms" array of SearchRoom objects with rent info.
-    buildings = _extract_buildings(flight_data, value_map)
+    buildings = _extract_buildings(_result_list_lines(flight_data), value_map)
 
     for building in buildings:
         # Building-level fields
@@ -103,15 +103,11 @@ def parse_airdoor(html_str: str) -> list[dict]:
                 else ""
             )
 
-            # Detail URL: constructed from building and room ids
             building_id = room.get("building_id", building.get("id", ""))
             room_id = room.get("id", "")
             detail_url = ""
             if building_id and room_id:
-                detail_url = (
-                    f"https://airdoor.jp/buildings/{building_id}"
-                    f"/rooms/{room_id}"
-                )
+                detail_url = f"https://airdoor.jp/detail/{building_id}/{room_id}"
 
             prop = {
                 "property_name": building_name,
@@ -134,55 +130,33 @@ def parse_airdoor(html_str: str) -> list[dict]:
 
 
 def get_next_page_url_airdoor(html_str: str) -> str | None:
-    """Extract the next page URL from airdoor.jp search results HTML.
+    """Return the next results page URL, or None on the last page.
 
-    Airdoor uses query-parameter-based pagination.  The current search URL
-    is stored in the flight payload under ``pathName``.  If the page has
-    buildings listed and the current URL does not already contain a ``p=``
-    parameter at the maximum page, we construct the next-page URL by
-    incrementing (or adding) the ``p=`` query parameter.
-
-    Args:
-        html_str: Raw HTML string of the search results page.
-
-    Returns:
-        Absolute URL string for the next page, or None if on the last page
-        or unable to determine pagination.
+    The payload carries the page count in ``paginatorInfo.total`` and the
+    current ``p`` in the search-params object; ``pathName`` never has ``p``.
     """
     flight_data = _decode_flight_payload(html_str)
 
-    # Find pathName value
     path_m = re.search(r'"pathName":"([^"]+)"', flight_data)
-    if not path_m:
+    total_m = re.search(r'"paginatorInfo":\{"total":(\d+)', flight_data)
+    if not path_m or not total_m:
         return None
 
-    raw_path = path_m.group(1)
-    # Decode unicode escapes (\u0026 -> &)
-    path = raw_path.encode().decode("unicode_escape")
-
-    # Check if there are buildings on this page (if not, we are past the end)
-    if '"__typename":"SearchBuilding"' not in flight_data:
+    current_page = 1
+    params_m = re.search(r'(\{[^{}]*\}),"growthbookPayload"', flight_data)
+    if params_m:
+        try:
+            current_page = int(json.loads(params_m.group(1)).get("p", 1))
+        except ValueError:
+            pass
+    if current_page >= int(total_m.group(1)):
         return None
 
-    # Determine current page number
-    page_m = re.search(r'[?&]p=(\d+)', path)
-    if page_m:
-        current_page = int(page_m.group(1))
-        next_page = current_page + 1
-        next_path = re.sub(
-            r'([?&])p=\d+', rf'\g<1>p={next_page}', path
-        )
-    else:
-        # No p= param means page 1; add p=2
-        separator = "&" if "?" in path else "?"
-        next_path = path + separator + "p=2"
-
-    # Make absolute
-    if next_path.startswith("/"):
-        return "https://airdoor.jp" + next_path
-    if not next_path.startswith("http"):
-        return "https://airdoor.jp/" + next_path
-    return next_path
+    # pathName escapes "&" as a unicode escape sequence
+    path = path_m.group(1).encode().decode("unicode_escape")
+    path = re.sub(r'&p=\d+', '', path)
+    separator = "&" if "?" in path else "?"
+    return f"https://airdoor.jp{path}{separator}p={current_page + 1}"
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +195,32 @@ def _build_value_map(flight_data: str) -> dict:
         except (json.JSONDecodeError, ValueError):
             pass
     return value_map
+
+
+def _result_list_lines(flight_data: str) -> str:
+    """Return only the flight lines reachable from ``ResultList``.
+
+    The page also embeds buildings for 類似条件のお部屋 suggestions, which
+    ignore the search conditions.
+    """
+    lines = {}
+    for line in flight_data.split("\n"):
+        m = re.match(r'^([0-9a-fA-F]+):', line)
+        if m:
+            lines.setdefault(m.group(1), line)
+
+    root = re.search(r'"ResultList":"\$L([0-9a-fA-F]+)"', flight_data)
+    if not root:
+        return flight_data
+
+    reachable, stack = [], [root.group(1)]
+    while stack:
+        line_id = stack.pop()
+        if line_id in reachable or line_id not in lines:
+            continue
+        reachable.append(line_id)
+        stack.extend(re.findall(r'"\$L([0-9a-fA-F]+)"', lines[line_id]))
+    return "\n".join(lines[i] for i in reachable)
 
 
 def _resolve_ref(value, value_map: dict):
@@ -315,7 +315,7 @@ def _derive_floor_info(unit_name: str) -> str:
     For 4-digit units (e.g. '0601号室'), digits 1-2 (or the leading
     non-zero portion) are the floor.
     """
-    m = re.match(r'0*(\d+)\d{2}号室', unit_name)
+    m = re.match(r'0*(\d+)\d{2}号室', unit_name or "")
     if m:
         floor_num = m.group(1)
         if floor_num:

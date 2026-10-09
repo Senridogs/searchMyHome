@@ -113,7 +113,7 @@ def parse_smocca(html_str: str) -> list[dict]:
             first_line = _clean(_strip_tags(first_line_html))
             # Pattern: "路線名/駅名 徒歩X分" or "路線名/駅名 バスY分 停留所から徒歩Z分"
             line_station_m = re.match(
-                r'(.+?)/(.+?)\s+(徒歩|バス)', first_line
+                r'(.+?)/(.+?)\s+(徒?歩|バス)', first_line
             )
             if line_station_m:
                 railway_line = line_station_m.group(1).strip()
@@ -124,15 +124,10 @@ def parse_smocca(html_str: str) -> list[dict]:
                 if parts:
                     nearest_station = parts[0]
 
-            # Walk minutes: look for 徒歩(\d+)分
-            walk_m = re.search(r'徒歩\s*(\d+)\s*分', first_line)
+            # Some listings write "歩X分" instead of "徒歩X分"
+            walk_m = re.search(r'徒?歩\s*(\d+)\s*分', first_line)
             if walk_m:
                 walk_minutes = walk_m.group(1)
-            else:
-                # Might be bus + walk: "バスX分 ...から徒歩Y分"
-                bus_walk_m = re.search(r'徒歩\s*(\d+)\s*分', first_line)
-                if bus_walk_m:
-                    walk_minutes = bus_walk_m.group(1)
 
         # -----------------------------------------------------------------
         # Building info: icon_20_house01 section

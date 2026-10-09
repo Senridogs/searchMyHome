@@ -1,111 +1,96 @@
+import html
+import json
 import re
-from html.parser import HTMLParser
+
+# The site loads its ペット可 feature list (feature 2679) from this REST endpoint
+SENGAWA_URL_TEMPLATE = (
+    "https://sengawa.re-ws.jp/wp-json/wp/v2/get_search_result_for_feature"
+    "?search_url=https%3A%2F%2Fsengawa.re-ws.jp%2Ffeature%2F2679%2F"
+    "&rent_or_sale=rent&area_or_line=area&item_per_page=30&sort=new_arrival"
+    "&sub%5B%5D=is_pet_ok&page_num={page}"
+)
 
 
-def _strip_tags(html_fragment: str) -> str:
-    result: list[str] = []
-
-    class _TagStripper(HTMLParser):
-        def handle_data(self, data: str) -> None:
-            result.append(data)
-
-    _TagStripper().feed(html_fragment)
-    return "".join(result)
+def sengawa_url(page: int) -> str:
+    return SENGAWA_URL_TEMPLATE.format(page=page)
 
 
-def _clean(text: str) -> str:
-    text = text.replace("\xa0", " ").replace("&nbsp;", " ")
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+def _text(fragment: str) -> str:
+    text = html.unescape(re.sub(r"<[^>]+>", " ", fragment))
+    return re.sub(r"\s+", " ", text).strip()
 
 
-def parse_sengawa(html_str: str) -> list[dict]:
-    blocks = re.split(r'<div\s+class="box_result">', html_str)
+def _results_html(raw: str) -> str:
+    """The endpoint returns JSON {"html": ...}; accept plain HTML too."""
+    if raw.lstrip().startswith("{"):
+        try:
+            return json.loads(raw).get("html", "")
+        except ValueError:
+            return ""
+    return raw
+
+
+def _td(block: str, cls: str) -> str:
+    m = re.search(rf'<td class="{cls}[^"]*">(.*?)</td>', block, re.DOTALL)
+    return _text(m.group(1)) if m else ""
+
+
+def parse_sengawa(raw: str) -> list[dict]:
+    page = _results_html(raw)
     properties: list[dict] = []
 
-    for block in blocks[1:]:
-        end = block.find('<div class="box_result">')
-        if end != -1:
-            block = block[:end]
+    for block in re.split(r'<article class="data', page)[1:]:
+        address = re.sub(r"\s+", "", _td(block, "feature-detail-data__address"))
+        built = _td(block, "feature-detail-data__age")
+        built = re.sub(r"[（(].*$", "", built).strip()
 
-        layout_m = re.search(r'class="typo_layout"[^>]*>(.*?)</p>', block, re.DOTALL)
-        area_m = re.search(r'class="area"[^>]*>(.*?)</p>', block, re.DOTALL)
-        price_m = re.search(r'class="typo_price"[^>]*>(.*?)</p>', block, re.DOTALL)
-        fee_m = re.search(r'class="typo_maintenance_fee"[^>]*>(.*?)</p>', block, re.DOTALL)
-        access_m = re.search(r'class="typo_access"[^>]*>(.*?)</p>', block, re.DOTALL)
-        address_m = re.search(r'<span>所在地[：:]</span>\s*(.*?)</p>', block, re.DOTALL)
-        year_m = re.search(r'<span>築年月[：:]</span>\s*(.*?)</p>', block, re.DOTALL)
-        detail_m = re.search(r'<a\s+href="(/es/rent/[^"]+)"', block)
-        name_m = re.search(r'class="typo_name"[^>]*>(.*?)</(?:p|div)>', block, re.DOTALL)
-        pet_m = re.search(r'class="typo_selling_point"[^>]*>(.*?)</p>', block, re.DOTALL)
-        floor_m = re.search(r'<span>階数[：:]</span>\s*(.*?)</p>', block, re.DOTALL)
+        railway_line = nearest_station = walk_minutes = ""
+        access_m = re.search(
+            r'<td class="feature-detail-data__access">(.*?)(?:<br>|</td>)', block, re.DOTALL
+        )
+        if access_m:
+            am = re.match(r"(\S+)\s+(\S+?)駅\s+徒歩(\d+)分", _text(access_m.group(1)))
+            if am:
+                railway_line = am.group(1)
+                nearest_station = re.sub(r"[（(].*?[）)]", "", am.group(2))
+                walk_minutes = am.group(3)
 
-        floor_plan = _clean(_strip_tags(layout_m.group(1))) if layout_m else ""
-        area_sqm = _clean(_strip_tags(area_m.group(1))) if area_m else ""
-        rent = _clean(_strip_tags(price_m.group(1))) if price_m else ""
-        management_fee = _clean(_strip_tags(fee_m.group(1))).strip("（）()") if fee_m else ""
+        for row in re.split(r'<td class="feature-detail-condition__others1 checkbox">', block)[1:]:
+            fav_m = re.search(r'<span class="fav es-fav[^"]*"(.*?)>', row, re.DOTALL)
+            if not fav_m:
+                continue
+            attrs = {
+                k: html.unescape(v)
+                for k, v in re.findall(r'data-([\w-]+)="([^"]*)"', fav_m.group(1))
+            }
+            room_id = attrs.get("identifier", "")
+            floor_m = re.search(r'feature-detail-condition__floor pc">\s*(.*?)\s*<', row)
 
-        access_text = _clean(_strip_tags(access_m.group(1))) if access_m else ""
-        access_text = re.sub(r'^交通[：:]\s*', '', access_text)
-        railway_line = ""
-        nearest_station = ""
-        walk_minutes = ""
-        am = re.match(r'(.+?線)\s+(.+?駅)\s+徒歩(\d+)分', access_text)
-        if not am:
-            am = re.match(r'(.+?)\s+(.+?駅)\s+徒歩(\d+)分', access_text)
-        if am:
-            railway_line = am.group(1)
-            nearest_station = am.group(2)
-            walk_minutes = am.group(3) + "分"
-
-        address = _clean(_strip_tags(address_m.group(1))) if address_m else ""
-        building_year = _clean(_strip_tags(year_m.group(1))) if year_m else ""
-        detail_url = ("https://sengawa.es-ws.jp" + detail_m.group(1)) if detail_m else ""
-        property_name = _clean(_strip_tags(name_m.group(1))) if name_m else ""
-        pet_conditions = _clean(_strip_tags(pet_m.group(1))) if pet_m else ""
-        floor_info = _clean(_strip_tags(floor_m.group(1))) if floor_m else ""
-
-        if not property_name and address:
-            property_name = address
-
-        properties.append({
-            "property_name": property_name,
-            "rent": rent,
-            "management_fee": management_fee,
-            "floor_plan": floor_plan,
-            "area_sqm": area_sqm,
-            "railway_line": railway_line,
-            "nearest_station": nearest_station,
-            "walk_minutes": walk_minutes,
-            "address": address,
-            "building_year_month": building_year,
-            "floor_info": floor_info,
-            "pet_conditions": pet_conditions,
-            "detail_url": detail_url,
-        })
+            properties.append({
+                "property_name": attrs.get("building-name") or address,
+                "rent": attrs.get("price", ""),
+                "management_fee": attrs.get("management-fee", ""),
+                "floor_plan": attrs.get("house-plan", ""),
+                "area_sqm": attrs.get("major-area", ""),
+                "railway_line": railway_line,
+                "nearest_station": nearest_station,
+                "walk_minutes": walk_minutes,
+                "address": address,
+                "building_year_month": built,
+                "floor_info": floor_m.group(1) if floor_m else "",
+                "pet_conditions": "ペット可",
+                "detail_url": f"https://sengawa.re-ws.jp/rent/{room_id}/" if room_id else "",
+            })
 
     return properties
 
 
-def get_next_page_url_sengawa(html_str: str) -> str | None:
-    pager_m = re.search(r'class="eswsPageLink">(.*?)</li>', html_str, re.DOTALL)
-    if not pager_m:
+def get_next_page_url_sengawa(raw: str) -> str | None:
+    page = _results_html(raw)
+    current_m = re.search(r'class="pager current" data-page="(\d+)"', page)
+    if not current_m:
         return None
-
-    pager = pager_m.group(1)
-    pages_linked = re.findall(r'/feature1/-/page_count/(\d+)', pager)
-    if not pages_linked:
-        return None
-
-    all_spans = re.findall(r'<span>(\d+)</span>', pager)
-    current_page = 1
-    for s in all_spans:
-        if s not in pages_linked:
-            current_page = int(s)
-            break
-
-    next_page = current_page + 1
-    if str(next_page) in pages_linked:
-        return f"https://sengawa.es-ws.jp/feature1/-/page_count/{next_page}"
-
+    next_page = int(current_m.group(1)) + 1
+    if f'data-page="{next_page}"' in page:
+        return sengawa_url(next_page)
     return None

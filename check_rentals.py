@@ -28,8 +28,9 @@ from parse_airdoor import parse_airdoor, get_next_page_url_airdoor
 from parse_rstore import parse_rstore, get_next_page_url_rstore
 from parse_pethomeweb import parse_pethomeweb, get_next_page_url_pethomeweb
 from parse_petkachintai import parse_petkachintai, get_next_page_url_petkachintai
-from parse_sengawa import parse_sengawa, get_next_page_url_sengawa
+from parse_sengawa import parse_sengawa, get_next_page_url_sengawa, sengawa_url
 from parse_door_ac import parse_door_ac, get_next_page_url_door_ac
+from conditions import area_preference, unmet_conditions
 
 HEADERS = [
     "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -44,14 +45,14 @@ URLS = {
     "賃貸EX": "https://chintai-ex.jp/search/detail?city_code%5B%5D=13101&city_code%5B%5D=13102&city_code%5B%5D=13103&city_code%5B%5D=13104&city_code%5B%5D=13105&city_code%5B%5D=13106&city_code%5B%5D=13107&city_code%5B%5D=13109&city_code%5B%5D=13110&city_code%5B%5D=13111&city_code%5B%5D=13112&city_code%5B%5D=13113&city_code%5B%5D=13114&city_code%5B%5D=13115&city_code%5B%5D=13116&city_code%5B%5D=13117&city_code%5B%5D=13118&city_code%5B%5D=13119&city_code%5B%5D=13120&cond%5Barea%5D%5Bmin%5D=50&cond%5Bbaths%5D%5B%5D=1&cond%5Bbuilt_year%5D=25&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=190000&cond%5Bconditions%5D%5B%5D=64&cond%5Bkitchens%5D%5B%5D=1&cond%5Bkitchens%5D%5B%5D=2&cond%5Blocations%5D%5B%5D=2&cond%5Bother_conditions%5D%5B%5D=4096&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=10&cond%5Bwalk_min%5D=15&prefecture_path=tokyo",
     "賃貸EX(2)": "https://chintai-ex.jp/search/detail?city_code%5B%5D=13115&city_code%5B%5D=13119&city_code%5B%5D=13120&city_code%5B%5D=13204&city_code%5B%5D=13208&city_code%5B%5D=13229&cond%5Barea%5D%5Bmin%5D=50&cond%5Bbaths%5D%5B%5D=1&cond%5Bbuilt_year%5D=25&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=180000&cond%5Bconditions%5D%5B%5D=64&cond%5Blocations%5D%5B%5D=2&cond%5Bother_conditions%5D%5B%5D=4096&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=10&cond%5Bwalk_min%5D=10&prefecture_path=tokyo",
     "スモッカ": "https://smocca.jp/search/results?city_code%5B%5D=13101&city_code%5B%5D=13102&city_code%5B%5D=13103&city_code%5B%5D=13104&city_code%5B%5D=13105&city_code%5B%5D=13106&city_code%5B%5D=13107&city_code%5B%5D=13108&city_code%5B%5D=13109&city_code%5B%5D=13110&city_code%5B%5D=13111&city_code%5B%5D=13112&city_code%5B%5D=13113&city_code%5B%5D=13114&city_code%5B%5D=13115&city_code%5B%5D=13116&city_code%5B%5D=13117&city_code%5B%5D=13119&city_code%5B%5D=13120&city_code%5B%5D=13204&cond%5Barea%5D%5Bmin%5D=50&cond%5Bbaths%5D%5B%5D=1&cond%5Bbuilt_year%5D=25&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=190000&cond%5Bconditions%5D%5B%5D=64&cond%5Bkitchens%5D%5B%5D=2&cond%5Blocations%5D%5B%5D=16&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=10&cond%5Bsecurities%5D%5B%5D=2&cond%5Bsort%5D=arrived_at+desc&cond%5Bstructs%5D%5B%5D=2&cond%5Bstructs%5D%5B%5D=3&cond%5Bwalk_min%5D=15&prefecture_path=tokyo&sort_base=smocca_pcvr_a",
-    "ペットアドパーク": "https://www.pet-adpark.jp/es/pref_city_search_list.php?pref=1310_1320&city=1310_1059-1310_1075-1310_1105-1310_1113-1310_1121-1310_1148-1310_1156-1310_1164-1310_1172-1310_1199-1310_1202&tmpl=pet&area=1000&category=chintai&count=30&sortHistory=sort2a&sort=sort8d&bldgType[]=01_03_04&bldgType[]=02&bldgType[]=06&moneyL=&moneyH=190000&kyoekiIncFlg=1&preset_disp=off&spaceL=50&spaceH=&walk=15&tikunensu=&newdate=&begin=0",
-    "AirDoor": "https://airdoor.jp/list?jis=13101%2C13102%2C13103%2C13104%2C13105%2C13106%2C13107%2C13108%2C13109%2C13110%2C13111%2C13112%2C13113%2C13114%2C13115%2C13116%2C13117%2C13119%2C13120%2C13204&ur=190000&iaf=1&uf=15&le=50&ua=30&cs=d-1-2&dir=d-3&ca=d-8-10-24-41",
-    "R-STORE": "https://www.r-store.jp/search?&sb_purpose1%5B%5D=R&sb_r_max=190000&sb_price=1&sb_c%5B%5D=13101&sb_c%5B%5D=13102&sb_c%5B%5D=13103&sb_c%5B%5D=13104&sb_c%5B%5D=13105&sb_c%5B%5D=13113&sb_c%5B%5D=13106&sb_c%5B%5D=13107&sb_c%5B%5D=13109&sb_c%5B%5D=13110&sb_c%5B%5D=13111&sb_c%5B%5D=13112&sb_c%5B%5D=13114&sb_c%5B%5D=13115&sb_c%5B%5D=13120&sb_c%5B%5D=13116&sb_c%5B%5D=13117&sb_c%5B%5D=13119&sb_c%5B%5D=13204&sb_walk_from=15&sb_area_up=50&sb_floor_plan%5B%5D=1R&sb_floor_plan%5B%5D=1K&sb_floor_plan%5B%5D=1DK&sb_floor_plan%5B%5D=1LDK&sb_floor_plan%5B%5D=1SLDK&sb_floor_plan%5B%5D=2K&sb_floor_plan%5B%5D=2DK&sb_floor_plan%5B%5D=2LDK&sb_floor_plan%5B%5D=2SLDK&sb_floor_plan%5B%5D=3K&sb_floor_plan%5B%5D=3DK&sb_floor_plan%5B%5D=3LDK&sb_floor_plan%5B%5D=3SLDK&sb_floor_plan%5B%5D=4K&sb_floor_plan%5B%5D=4DK&sb_floor_plan%5B%5D=4LDK&sb_floor_plan%5B%5D=4SLDK&sb_floor_plan%5B%5D=5K%E4%BB%A5%E4%B8%8A&sb_age_of_building=25&sb_pet%5B%5D=%E5%B0%8F%E5%9E%8B%E7%8A%AC%E5%8F%AF&sb_pet%5B%5D=%E7%8C%AB%E5%8F%AF&sb_r_category%5B%5D=%E3%81%B5%E3%81%9F%E3%82%8A%E6%9A%AE%E3%82%89%E3%81%97%E5%90%91%E3%81%8D&sb_kodawari_category%5B%5D=2%E9%9A%8E%E4%BB%A5%E4%B8%8A",
+    "ペットアドパーク": "https://www.pet-adpark.jp/es/pref_city_search_list.php?pref=1310_1320&city=1310_1016-1310_1024-1310_1032-1310_1041-1310_1059-1310_1067-1310_1075-1310_1091-1310_1105-1310_1113-1310_1121-1310_1130-1310_1148-1310_1156-1310_1164-1310_1172-1310_1181-1310_1199-1310_1202&tmpl=pet&area=1000&category=chintai&count=30&sortHistory=sort2a&sort=sort8d&bldgType[]=01_03_04&bldgType[]=02&bldgType[]=06&moneyL=&moneyH=190000&kyoekiIncFlg=1&preset_disp=off&spaceL=45&spaceH=&walk=10&tikunensu=&newdate=&begin=0",
+    "AirDoor": "https://airdoor.jp/list?jis=13101%2C13102%2C13103%2C13104%2C13105%2C13106%2C13107%2C13109%2C13110%2C13111%2C13112%2C13113%2C13114%2C13115%2C13116%2C13117%2C13118%2C13119%2C13120%2C13204%2C13208%2C13219%2C14109%2C14117%2C14133%2C14134%2C14136%2C14137%2C11227%2C11228%2C11229%2C11230&ur=190000&iaf=1&uf=10&le=45&ua=50&fp=d-2_ldk-3_ldk-4_more&cs=d-1-2&ca=d-10-15-24-43",
+    "R-STORE": "https://www.r-store.jp/search?sb_purpose1%5B%5D=R&sb_r_max=190000&sb_price=1&sb_c%5B%5D=13101&sb_c%5B%5D=13102&sb_c%5B%5D=13103&sb_c%5B%5D=13104&sb_c%5B%5D=13105&sb_c%5B%5D=13106&sb_c%5B%5D=13107&sb_c%5B%5D=13109&sb_c%5B%5D=13110&sb_c%5B%5D=13111&sb_c%5B%5D=13112&sb_c%5B%5D=13113&sb_c%5B%5D=13114&sb_c%5B%5D=13115&sb_c%5B%5D=13116&sb_c%5B%5D=13117&sb_c%5B%5D=13118&sb_c%5B%5D=13119&sb_c%5B%5D=13120&sb_c%5B%5D=13204&sb_c%5B%5D=13208&sb_c%5B%5D=13219&sb_walk_from=10&sb_area_up=45&sb_floor_plan%5B%5D=2LDK&sb_floor_plan%5B%5D=2SLDK&sb_floor_plan%5B%5D=3LDK&sb_floor_plan%5B%5D=3SLDK&sb_floor_plan%5B%5D=4LDK&sb_floor_plan%5B%5D=4SLDK&sb_floor_plan%5B%5D=5K%E4%BB%A5%E4%B8%8A&sb_pet%5B%5D=%E5%B0%8F%E5%9E%8B%E7%8A%AC%E5%8F%AF&sb_pet%5B%5D=%E7%8C%AB%E5%8F%AF&sb_get_full1=true",
     "ペットホームウェブ": "https://www.pethomeweb.com/chintai/tokyo/list/?AR2=A2_55yo-A2_54yo-A2_55t2-A2_54li-A2_54r3-A2_55fl-A2_546l-A2_55la-A2_54hv-A2_5568-A2_54dy-A2_53z4-A2_53v1-A2_55q6-A2_55id-A2_5637-A2_54bi-A2_542j-A2_54vg-A2_575r-A2_55yz&SO=1&CH=1-33&CO=1&ME=8-18&EW=15&CN=9&KO=91-92-30-82-12-9-26",
     "ペット可賃貸.net": "https://petkachintai.net/archives/category/pet-friendly-rentals-in-tokyo",
     "スモッカ(2)": "https://smocca.jp/search/results?city_code%5B%5D=13109&city_code%5B%5D=13112&city_code%5B%5D=13115&city_code%5B%5D=13119&city_code%5B%5D=13208&cond%5Barea%5D%5Bmin%5D=50&cond%5Bbaths%5D%5B%5D=1&cond%5Bbuilt_year%5D=30&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=190000&cond%5Bconditions%5D%5B%5D=64&cond%5Blocations%5D%5B%5D=16&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=10&cond%5Bstructs%5D%5B%5D=2&cond%5Bstructs%5D%5B%5D=3&cond%5Bwalk_min%5D=15&prefecture_path=tokyo",
-    "仙川レントハウス": "https://sengawa.es-ws.jp/feature1.html",
-    "DOOR賃貸": "https://door.ac/list?utf8=%E2%9C%93&cond%5Bcities%5D%5B%5D=13109&cond%5Bcities%5D%5B%5D=13112&cond%5Bcities%5D%5B%5D=13115&cond%5Bcities%5D%5B%5D=13119&cond%5Bcities%5D%5B%5D=13208&cond%5Bsort%5D=-inquiry_price&cond%5Bfee_min%5D=&cond%5Bfee_max%5D=180000&cond%5Bincluded%5D=1&cond%5Bwalk_time%5D=15&cond%5Bsqmeter_min%5D=50&cond%5Bsqmeter_max%5D=&cond%5Bage_min%5D=&cond%5Bage_max%5D=30&cond%5Bfeatures%5D%5B%5D=7",
+    "仙川レントハウス": sengawa_url(1),
+    "DOOR賃貸": "https://door.ac/list?utf8=%E2%9C%93&cond%5Bcities%5D%5B%5D=13109&cond%5Bcities%5D%5B%5D=13112&cond%5Bcities%5D%5B%5D=13115&cond%5Bcities%5D%5B%5D=13119&cond%5Bcities%5D%5B%5D=13208&cond%5Bsort%5D=-inquiry_price&cond%5Bfee_min%5D=&cond%5Bfee_max%5D=190000&cond%5Bincluded%5D=1&cond%5Bwalk_time%5D=10&cond%5Bsqmeter_min%5D=45&cond%5Bsqmeter_max%5D=&cond%5Bage_min%5D=&cond%5Bage_max%5D=&cond%5Bfeatures%5D%5B%5D=7",
 }
 
 # Max pages per site
@@ -59,11 +60,19 @@ MAX_PAGES = {
     "ペット可賃貸.net": 1,
 }
 
+# Sources whose search isn't limited to our municipalities (Tokyo-wide blog)
+UNSCOPED_SITES = {"ペット可賃貸.net"}
 
-def curl_fetch(url: str) -> str | None:
+# The 仙川 REST endpoint returns HTTP 500 without a Referer
+EXTRA_HEADERS = {
+    "仙川レントハウス": ["-H", "Referer: https://sengawa.re-ws.jp/feature/2679/"],
+}
+
+
+def curl_fetch(url: str, extra_headers=()) -> str | None:
     """Fetch URL with curl and browser headers. Returns HTML string or None."""
     result = subprocess.run(
-        ["curl", "-s", "-w", "\n%{http_code}", *HEADERS, url],
+        ["curl", "-s", "-w", "\n%{http_code}", *HEADERS, *extra_headers, url],
         capture_output=True, text=True, timeout=30,
     )
     lines = result.stdout.rsplit("\n", 1)
@@ -109,7 +118,7 @@ def fetch_all_pages(site_name, first_url, parse_fn, next_page_fn, max_pages=30):
     page = 1
 
     while url and page <= max_pages:
-        html = curl_fetch(url)
+        html = curl_fetch(url, EXTRA_HEADERS.get(site_name, ()))
         if not html:
             print(f"  {site_name} page {page}: fetch failed")
             break
@@ -147,13 +156,18 @@ def _write_markdown_report(new_properties, all_properties, is_first_run, path):
             addr = p.get('address', '?')
             pet = p.get('pet_conditions', '?')
             site = p.get('source_site', '?')
+            built = p.get('building_year_month') or '?'
+            pref = p.get('area_preference')
 
             lines.append(f"### [{name}]({url})\n")
             lines.append(f"| 項目 | 内容 |")
             lines.append(f"|------|------|")
+            if pref:
+                lines.append(f"| エリア | {pref}エリア |")
             lines.append(f"| 家賃 | {rent}（管理費 {mgmt}） |")
             lines.append(f"| 間取り | {plan} / {area} |")
             lines.append(f"| 最寄駅 | {line} {station} 徒歩{walk}分 |")
+            lines.append(f"| 築年月 | {built} |")
             lines.append(f"| 住所 | {addr} |")
             lines.append(f"| ペット | {pet} |")
             lines.append(f"| サイト | {site} |")
@@ -185,7 +199,10 @@ def _write_line_message(new_properties, is_first_run, path):
         site = p.get('source_site', '')
 
         mgmt_str = f"(管理費{mgmt})" if mgmt and mgmt != '?' else ""
+        pref = p.get('area_preference')
         lines.append(f"━━━━━━━━━━")
+        if pref:
+            lines.append(f"⭐ {pref}エリア")
         lines.append(f"📍 {name}")
         lines.append(f"💰 {rent}{mgmt_str}")
         lines.append(f"🏠 {plan} / {area}")
@@ -290,14 +307,19 @@ def main():
     # Diff: find new listings (not previously seen)
     now_iso = datetime.now().isoformat()
     new_properties = [p for p in unique_properties if _prop_key(p) not in seen_history]
+    unseen_count = len(new_properties)
 
-    # Filter out properties <= 45㎡ from notifications
-    def _area_sqm(p):
-        raw = p.get("area_sqm") or p.get("area") or ""
-        m = re.search(r"[\d.]+", str(raw))
-        return float(m.group()) if m else 0.0
-
-    new_properties = [p for p in new_properties if _area_sqm(p) > 45 or _area_sqm(p) == 0.0]
+    # Notify only listings that satisfy the マンションノート conditions
+    matching = []
+    for p in new_properties:
+        area_scoped = p.get("source_site") not in UNSCOPED_SITES
+        if not unmet_conditions(p, area_scoped):
+            p["area_preference"] = area_preference(p, area_scoped)
+            matching.append(p)
+    new_properties = matching
+    preference_order = {"理想": 0, "住みたい": 1, "": 2}
+    new_properties.sort(key=lambda p: preference_order[p["area_preference"]])
+    print(f"\n未確認 {unseen_count}件のうち条件に合う物件: {len(new_properties)}件")
 
     # Add only NEW properties to seen history (don't refresh existing timestamps)
     for p in unique_properties:
