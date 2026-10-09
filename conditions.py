@@ -14,6 +14,13 @@ MAX_WALK_MIN = 10
 MAX_AGE_YEARS = 50
 MIN_LDK_ROOMS = 2  # 2LDK / 3LDK / 4LDK以上
 
+# 必須設備 (checked against NFKC-normalised equipment text)
+REQUIRED_EQUIPMENT = {
+    "コンロ2口以上": r"[2-9二三四]口",
+    "バス・トイレ別": r"バス・?トイレ別",
+    "室内洗濯機置場": r"室内洗濯機置",
+}
+
 # 住めたら理想的なエリア
 IDEAL_STATIONS = {
     "大岡山", "三鷹台", "学芸大学", "鷺沼", "元住吉", "祖師ヶ谷大蔵", "青葉台", "市が尾",
@@ -158,6 +165,11 @@ def unmet_conditions(p, area_scoped=True) -> list[str]:
     structure = unicodedata.normalize("NFKC", str(p.get("structure") or "")).upper()
     if structure and not re.search(r"鉄|RC", structure):  # 鉄筋系 (RC/SRC) か 鉄骨系
         failed.append("構造")
+    equipment = p.get("equipment")  # only sources that read detail pages set this
+    if equipment is not None:
+        for name, pattern in REQUIRED_EQUIPMENT.items():
+            if not re.search(pattern, equipment):
+                failed.append(name)
     if area_preference(p, area_scoped) is None:
         failed.append("エリア")
     return failed

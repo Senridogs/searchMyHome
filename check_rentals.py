@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import unicodedata
 from datetime import datetime
 
@@ -29,7 +30,8 @@ from parse_airdoor import parse_airdoor, get_next_page_url_airdoor
 from parse_rstore import parse_rstore, get_next_page_url_rstore
 from parse_pethomeweb import parse_pethomeweb, get_next_page_url_pethomeweb
 from parse_petkachintai import parse_petkachintai, get_next_page_url_petkachintai
-from parse_sengawa import parse_sengawa, get_next_page_url_sengawa, sengawa_url
+from parse_esweb import parse_esweb_detail, sitemap_rent_urls
+from parse_ielove import parse_ielove, get_next_page_url_ielove
 from parse_door_ac import parse_door_ac, get_next_page_url_door_ac
 from conditions import area_preference, unmet_conditions, yen
 
@@ -54,7 +56,7 @@ URLS = {
     "R-STORE": "https://www.r-store.jp/search?sb_purpose1%5B%5D=R&sb_r_max=190000&sb_price=1&sb_c%5B%5D=13101&sb_c%5B%5D=13102&sb_c%5B%5D=13103&sb_c%5B%5D=13104&sb_c%5B%5D=13105&sb_c%5B%5D=13106&sb_c%5B%5D=13107&sb_c%5B%5D=13109&sb_c%5B%5D=13110&sb_c%5B%5D=13111&sb_c%5B%5D=13112&sb_c%5B%5D=13113&sb_c%5B%5D=13114&sb_c%5B%5D=13115&sb_c%5B%5D=13116&sb_c%5B%5D=13117&sb_c%5B%5D=13118&sb_c%5B%5D=13119&sb_c%5B%5D=13120&sb_c%5B%5D=13204&sb_c%5B%5D=13208&sb_c%5B%5D=13219&sb_walk_from=10&sb_area_up=45&sb_floor_plan%5B%5D=2LDK&sb_floor_plan%5B%5D=2SLDK&sb_floor_plan%5B%5D=3LDK&sb_floor_plan%5B%5D=3SLDK&sb_floor_plan%5B%5D=4LDK&sb_floor_plan%5B%5D=4SLDK&sb_floor_plan%5B%5D=5K%E4%BB%A5%E4%B8%8A&sb_pet%5B%5D=%E5%B0%8F%E5%9E%8B%E7%8A%AC%E5%8F%AF&sb_pet%5B%5D=%E7%8C%AB%E5%8F%AF&sb_get_full1=true",
     "ペットホームウェブ": "https://www.pethomeweb.com/chintai/tokyo/list/?AR2=A2_55yo-A2_54yo-A2_55t2-A2_54li-A2_54r3-A2_55fl-A2_546l-A2_55la-A2_54hv-A2_5568-A2_54dy-A2_53z4-A2_53v1-A2_55q6-A2_55id-A2_5637-A2_54bi-A2_542j-A2_54vg-A2_575r-A2_55yz&SO=1&CH=1-33&CO=1&ME=8-18&EW=15&CN=9&KO=91-92-30-82-12-9-26",
     "ペット可賃貸.net": "https://petkachintai.net/archives/category/pet-friendly-rentals-in-tokyo",
-    "仙川レントハウス": sengawa_url(1),
+    "TOB": "https://www.tob-home.com/area_c1/bknarea_to13112/?address%5B%5D=13112&address%5B%5D=13115&address%5B%5D=13204&address%5B%5D=13208&pF=0&pC=19&kykn=0&kykn=1&rkn=0&shkn=0&aF=40&aC=0&years=0&wT=10&md%5B%5D=2LDK&md%5B%5D=3LDK&md%5B%5D=4LDK_up&op%5B%5D=option0100&op%5B%5D=option0402&op%5B%5D=option0500&orderby=modified&lmt=50",
     "DOOR賃貸": "https://door.ac/list?utf8=%E2%9C%93&cond%5Bcities%5D%5B%5D=13109&cond%5Bcities%5D%5B%5D=13112&cond%5Bcities%5D%5B%5D=13115&cond%5Bcities%5D%5B%5D=13119&cond%5Bcities%5D%5B%5D=13208&cond%5Bsort%5D=-inquiry_price&cond%5Bfee_min%5D=&cond%5Bfee_max%5D=180000&cond%5Bincluded%5D=1&cond%5Bwalk_time%5D=15&cond%5Bsqmeter_min%5D=50&cond%5Bsqmeter_max%5D=&cond%5Bage_min%5D=&cond%5Bage_max%5D=30&cond%5Bfeatures%5D%5B%5D=7",
 }
 
@@ -66,13 +68,24 @@ MAX_PAGES = {
 # Sources whose search isn't limited to our municipalities (Tokyo-wide blog)
 UNSCOPED_SITES = {"ペット可賃貸.net"}
 
-# Extra headers by URL: the 仙川 REST API returns HTTP 500 without a Referer;
-# スモッカ's load-more API returns 400 without X-Requested-With, and sending
-# that header to page 1 drops the load-more link.
+# Extra headers by URL: スモッカ's load-more API returns 400 without
+# X-Requested-With, and sending that header to page 1 drops the load-more link.
 EXTRA_HEADERS = {
-    "sengawa.re-ws.jp/wp-json/": ["-H", "Referer: https://sengawa.re-ws.jp/feature/2679/"],
     "smocca.jp/api/": ["-H", "X-Requested-With: XMLHttpRequest"],
 }
+
+# URLs where HTTP 404 means "nothing here" rather than an error: TOB answers a
+# search with no hits with 404, and es-web sitemaps briefly keep removed ads
+EMPTY_ON_404 = ("tob-home.com/", "re-ws.jp/rent/")
+
+# es-web agency sites, read via sitemap + detail pages (see parse_esweb.py).
+# robots.txt asks for 5s between requests; the per-run cap keeps a run short
+# while the first backlog is worked through over a few days.
+ESWEB_SITES = {
+    "仙川レントハウス": "https://sengawa.re-ws.jp",
+}
+ESWEB_CRAWL_DELAY = 5
+ESWEB_MAX_DETAILS_PER_RUN = 60
 
 
 def curl_fetch(url: str, attempts: int = 2) -> str | None:
@@ -91,6 +104,8 @@ def curl_fetch(url: str, attempts: int = 2) -> str | None:
         body, _, status = result.stdout.rpartition("\n")
         if result.returncode == 0 and status == "200":
             return body
+        if status == "404" and any(key in url for key in EMPTY_ON_404):
+            return ""
         print(f"  HTTP {status or '-'} (curl exit {result.returncode}) for {url[:80]}...")
         if status.startswith("4"):
             return None
@@ -152,7 +167,7 @@ def fetch_all_pages(site_name, first_url, parse_fn, next_page_fn, max_pages=30):
 
     while url and page <= max_pages:
         html = curl_fetch(url)
-        if not html:
+        if html is None:
             print(f"  {site_name} page {page}: fetch failed")
             break
         props = parse_fn(html)
@@ -162,6 +177,31 @@ def fetch_all_pages(site_name, first_url, parse_fn, next_page_fn, max_pages=30):
         page += 1
 
     return all_props
+
+
+def fetch_esweb_site(site_name, root, seen_history):
+    """Read detail pages from the site's sitemap that haven't been read before.
+
+    Every page read is remembered in seen_history as "url:<detail url>",
+    whether or not it allows pets, so each page is fetched only once.
+    """
+    xml = curl_fetch(f"{root}/sitemap-advertisement.xml")
+    if xml is None:
+        print(f"  {site_name} sitemap: fetch failed")
+        return []
+    pending = [u for u in sitemap_rent_urls(xml) if f"url:{u}" not in seen_history]
+    print(f"  {site_name}: 未読の詳細ページ {len(pending)}件（今回は最大{ESWEB_MAX_DETAILS_PER_RUN}件）")
+    props = []
+    for url in pending[:ESWEB_MAX_DETAILS_PER_RUN]:
+        time.sleep(ESWEB_CRAWL_DELAY)
+        page = curl_fetch(url)
+        if page is None:
+            continue
+        seen_history[f"url:{url}"] = datetime.now().isoformat()
+        prop = parse_esweb_detail(page, url)
+        if prop:
+            props.append(prop)
+    return props
 
 
 def _write_markdown_report(new_properties, all_properties, is_first_run, path):
@@ -295,7 +335,7 @@ def main():
         ("R-STORE", parse_rstore, get_next_page_url_rstore),
         ("ペットホームウェブ", parse_pethomeweb, get_next_page_url_pethomeweb),
         ("ペット可賃貸.net", parse_petkachintai, get_next_page_url_petkachintai),
-        ("仙川レントハウス", parse_sengawa, get_next_page_url_sengawa),
+        ("TOB", parse_ielove, get_next_page_url_ielove),
         ("DOOR賃貸", parse_door_ac, get_next_page_url_door_ac),
     ]
 
@@ -309,6 +349,14 @@ def main():
         print(f"[{site_name}]")
         props = fetch_all_pages(site_name, url, parse_fn, next_page_fn, max_pages)
         # Add source site name
+        for p in props:
+            p["source_site"] = site_name
+        all_properties.extend(props)
+        site_counts[site_name] = len(props)
+
+    for site_name, root in ESWEB_SITES.items():
+        print(f"[{site_name}]")
+        props = fetch_esweb_site(site_name, root, seen_history)
         for p in props:
             p["source_site"] = site_name
         all_properties.extend(props)
