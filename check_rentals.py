@@ -75,20 +75,25 @@ EXTRA_HEADERS = {
 }
 
 
-def curl_fetch(url: str) -> str | None:
-    """Fetch URL with curl and browser headers. Returns HTML string or None."""
+def curl_fetch(url: str, attempts: int = 2) -> str | None:
+    """Fetch URL with curl and browser headers. Returns HTML string or None.
+
+    A transfer cut off midway still reports HTTP 200, so curl's exit code is
+    checked too; otherwise a truncated page is parsed as if it were complete.
+    """
     extra = [h for key, headers in EXTRA_HEADERS.items() if key in url for h in headers]
-    result = subprocess.run(
-        ["curl", "-s", "-w", "\n%{http_code}", *HEADERS, *extra, url],
-        capture_output=True, text=True, timeout=30,
-    )
-    lines = result.stdout.rsplit("\n", 1)
-    if len(lines) < 2:
-        return None
-    body, status = lines[0], lines[1].strip()
-    if status == "200":
-        return body
-    print(f"  HTTP {status} for {url[:80]}...")
+    for _ in range(attempts):
+        result = subprocess.run(
+            ["curl", "-s", "--compressed", "--max-time", "60", "-w", "\n%{http_code}",
+             *HEADERS, *extra, url],
+            capture_output=True, text=True, timeout=90,
+        )
+        body, _, status = result.stdout.rpartition("\n")
+        if result.returncode == 0 and status == "200":
+            return body
+        print(f"  HTTP {status or '-'} (curl exit {result.returncode}) for {url[:80]}...")
+        if status.startswith("4"):
+            return None
     return None
 
 
