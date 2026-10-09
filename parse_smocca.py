@@ -1,3 +1,4 @@
+import html
 import re
 import json
 from html.parser import HTMLParser
@@ -50,7 +51,7 @@ def parse_smocca(html_str: str) -> list[dict]:
         r'(.*?)'
         r'(?=<div\s[^>]*?class="item_list01\s[^"]*?bukken[^"]*?"[^>]*?>|'
         r'<div\s+id="zero-result-recommend-box"|'
-        r'</form>)',
+        r'</form>|\Z)',
         re.DOTALL,
     )
 
@@ -69,16 +70,22 @@ def parse_smocca(html_str: str) -> list[dict]:
             block, re.DOTALL,
         )
 
-        if not title_link_m:
+        # Multi-room building cards; the title is "<name>の空室を探す" or plain text
+        is_group = 'building-group-container' in block_m.group(0)[:300]
+        if is_group:
+            group_title_m = re.search(
+                r'class="item_list01_title">.*?<h3[^>]*>(.*?)</h3>', block, re.DOTALL
+            )
+            raw_title = _clean(_strip_tags(group_title_m.group(1))) if group_title_m else ""
+            property_name = re.sub(r'の空室を探す$', '', raw_title)
+        elif title_link_m:
+            raw_title = _clean(_strip_tags(title_link_m.group(2)))
+            # Title often has "  X階の賃貸【東京都 / 区名】", strip that suffix
+            property_name = re.sub(
+                r'\s*\d+階の賃貸【[^】]*】\s*$', '', raw_title
+            ).strip() or raw_title
+        else:
             continue
-
-        raw_title = _clean(_strip_tags(title_link_m.group(2)))
-        # Title often has "  X階の賃貸【東京都 / 区名】", strip that suffix
-        property_name = re.sub(
-            r'\s*\d+階の賃貸【[^】]*】\s*$', '', raw_title
-        ).strip()
-        if not property_name:
-            property_name = raw_title
 
         # -----------------------------------------------------------------
         # Address: icon_20_address01 followed by text
@@ -175,6 +182,19 @@ def parse_smocca(html_str: str) -> list[dict]:
         # Room rows: each <tr> inside <tbody> of the item_list01_rooms table
         # has: floor, rent, management_fee, floor_plan, area_sqm, detail_url
         # -----------------------------------------------------------------
+        building = {
+            "property_name": property_name,
+            "railway_line": railway_line,
+            "nearest_station": nearest_station,
+            "walk_minutes": walk_minutes,
+            "address": address,
+            "building_year_month": building_year_month,
+            "pet_conditions": pet_conditions,
+        }
+        if is_group:
+            results.extend(_group_rooms(block, building, floor_count))
+            continue
+
         table_m = re.search(
             r'<table\s+class="[^"]*item_list01_rooms[^"]*"[^>]*>'
             r'(.*?)</table>',
@@ -263,35 +283,45 @@ def parse_smocca(html_str: str) -> list[dict]:
     return results
 
 
-def get_next_page_url_smocca(html_str: str) -> str | None:
-    """Extract the next page URL from smocca.jp search results pagination.
+def _group_rooms(block: str, building: dict, floor_count: str) -> list[dict]:
+    """Rooms of a multi-room building card (one ``tr#z_...`` per room)."""
+    rooms = []
+    for row in re.split(r'<tr\s+id="z_', block)[1:]:
+        def info(cls):
+            m = re.search(r'<div class="' + cls + r'">(.*?)</div>\s*(?:<div class="|</div>)', row, re.DOTALL)
+            return m.group(1) if m else ""
 
-    Smocca uses the Kaminari gem for pagination. The next-page link is inside
-    <ul class="pager_kaminari"> as a <span class="next"> or <li class="next">
-    element containing an <a> tag.
+        floor = _clean(_strip_tags(info("group-bukken-room-info")))
+        price = _clean(_strip_tags(re.split(r'<div class="mt_5">', info("group-bukken-price-info"))[0]))
+        rent, _, fee = price.partition(" / ")
+        plan_parts = re.split(r'<br\s*/?>', info("group-bukken-plan-info"))
+        url_m = re.search(r'href="(https://smocca\.jp/bukken/detail/[^"]+)"', row)
+        rooms.append({
+            **building,
+            "rent": rent.strip(),
+            "management_fee": fee.strip(),
+            "floor_plan": _clean(_strip_tags(plan_parts[0])),
+            "area_sqm": _clean(_strip_tags(plan_parts[1])) if len(plan_parts) > 1 else "",
+            "floor_info": " / ".join(filter(None, [floor, floor_count])),
+            "detail_url": url_m.group(1) if url_m else "",
+        })
+    return rooms
 
-    Args:
-        html_str: Raw HTML string of the search results page.
 
-    Returns:
-        Absolute URL string for the next page, or None if there is no next page.
+def get_next_page_url_smocca(html_str: str, current_url: str | None = None) -> str | None:
+    """Return the next results URL, or None when there are no more rooms.
+
+    Page 1 links to the load-more API (``a.js-load-more-bukkens-api-pc``),
+    which needs ``X-Requested-With``. API pages have no link, so the page
+    number in ``current_url`` is incremented while pages still have rooms.
     """
-    # Kaminari pager pattern: <span class="next"><a href="...">
-    # or <li class="next"><a href="...">
-    next_m = re.search(
-        r'<(?:span|li)\s+class="next"[^>]*>\s*<a\s+href="([^"]+)"',
-        html_str,
-        re.DOTALL,
-    )
-    if next_m:
-        url = next_m.group(1)
-        # Decode HTML entities
-        url = url.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
-        # Make absolute if relative
-        if url.startswith("/"):
-            url = "https://smocca.jp" + url
-        return url
-
+    more_m = re.search(r'js-load-more-bukkens-api-pc[^>]*data-url="([^"]+)"', html_str)
+    if more_m:
+        return html.unescape(more_m.group(1))
+    if current_url and "/api/bukken/list" in current_url and parse_smocca(html_str):
+        page_m = re.search(r'([?&]page=)(\d+)', current_url)
+        if page_m:
+            return current_url.replace(page_m.group(0), page_m.group(1) + str(int(page_m.group(2)) + 1))
     return None
 
 
@@ -303,11 +333,11 @@ if __name__ == "__main__":
         sys.exit(1)
 
     with open(sys.argv[1], "r", encoding="utf-8") as f:
-        html = f.read()
+        page = f.read()
 
-    props = parse_smocca(html)
+    props = parse_smocca(page)
     print(json.dumps(props, ensure_ascii=False, indent=2))
     print(f"\nTotal properties: {len(props)}")
 
-    next_url = get_next_page_url_smocca(html)
+    next_url = get_next_page_url_smocca(page)
     print(f"Next page URL: {next_url}")

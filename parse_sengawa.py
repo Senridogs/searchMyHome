@@ -85,7 +85,7 @@ def parse_sengawa(raw: str) -> list[dict]:
     return properties
 
 
-def get_next_page_url_sengawa(raw: str) -> str | None:
+def get_next_page_url_sengawa(raw: str, current_url: str | None = None) -> str | None:
     page = _results_html(raw)
     current_m = re.search(r'class="pager current" data-page="(\d+)"', page)
     if not current_m:

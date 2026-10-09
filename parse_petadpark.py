@@ -147,7 +147,7 @@ def parse_petadpark(html_str: str) -> list[dict]:
     return results
 
 
-def get_next_page_url_petadpark(html_str: str) -> str | None:
+def get_next_page_url_petadpark(html_str: str, current_url: str | None = None) -> str | None:
     """Extract the 'next page' URL from pet-adpark search results.
 
     Args:

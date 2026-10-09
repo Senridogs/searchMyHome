@@ -155,6 +155,9 @@ def unmet_conditions(p, area_scoped=True) -> list[str]:
     age = building_age(p.get("building_year_month"))
     if age is not None and age > MAX_AGE_YEARS:
         failed.append("築年数")
+    structure = unicodedata.normalize("NFKC", str(p.get("structure") or "")).upper()
+    if structure and not re.search(r"鉄|RC", structure):  # 鉄筋系 (RC/SRC) か 鉄骨系
+        failed.append("構造")
     if area_preference(p, area_scoped) is None:
         failed.append("エリア")
     return failed

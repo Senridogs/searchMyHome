@@ -257,7 +257,7 @@ def parse_rstore(html_str):
     return parser.properties
 
 
-def get_next_page_url_rstore(html_str):
+def get_next_page_url_rstore(html_str, current_url=None):
     """
     Extract the next-page URL from an R-STORE search results page.
 

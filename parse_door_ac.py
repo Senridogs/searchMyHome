@@ -130,7 +130,7 @@ def _get_preceding_dt(summary: str, dd_html: str) -> str:
     return _clean(_strip_tags(dt_m.group(1))) if dt_m else ""
 
 
-def get_next_page_url_door_ac(html_str: str) -> str | None:
+def get_next_page_url_door_ac(html_str: str, current_url: str | None = None) -> str | None:
     next_m = re.search(
         r'<(?:span|li)\s+class="[^"]*next[^"]*"[^>]*>\s*<a\s+href="([^"]+)"',
         html_str,

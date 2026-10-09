@@ -3,192 +3,101 @@ import json
 from html.parser import HTMLParser
 
 
+NEAR_MISS_HEADING = "お探しになっている条件に近い物件"
+
+
 def parse_chintai_ex(html_str: str) -> list[dict]:
-    """Parse chintai-ex.jp search results HTML and extract rental property data.
+    """Parse chintai-ex.jp search results (building-grouped layout).
 
-    Args:
-        html_str: Raw HTML string of the search results page.
-
-    Returns:
-        List of dicts, one per property, with keys:
-            property_name, rent, management_fee, floor_plan, area_sqm,
-            railway_line, nearest_station, walk_minutes, address,
-            building_year_month, floor_info, pet_conditions, detail_url
+    Each building is a ``div.building-group-container`` whose header holds
+    name/address/station/building info, followed by one ``tr#z_...`` per room.
+    Near-miss suggestions after NEAR_MISS_HEADING are ignored.
     """
+    cut = html_str.find(NEAR_MISS_HEADING)
+    if cut != -1:
+        html_str = html_str[:cut]
+
     results = []
+    for block in re.split(r'<div\s+class="building-group-container', html_str)[1:]:
+        if 'data-scene-name="search_result"' not in block[:1000]:
+            continue
 
-    # Each property block starts with an <h3> title containing the detail link,
-    # followed by a <table class="...js-bukken bukken"...> with the data rows.
-
-    # 1) Extract property blocks: from each <h3 class="titleStyle01 ..."> to the
-    #    next one (or end of bukkenList div).
-    #    We split on the h3 title pattern.
-
-    # Pattern for the h3 property title block
-    h3_pattern = re.compile(
-        r'<h3\s+class="titleStyle01[^"]*"[^>]*>\s*<span[^>]*>\s*'
-        r'(?:<span[^>]*>\[NEW\]</span>\s*)?'
-        r'<a\s+href="(https://chintai-ex\.jp/dwelling/show/[^"]+)"[^>]*>\s*'
-        r'(.+?)\s*</a>',
-        re.DOTALL,
-    )
-
-    # Split html into property sections using the table with class js-bukken
-    table_pattern = re.compile(
-        r'<table\s+class="[^"]*js-bukken\s+bukken"[^>]*>(.+?)</table>',
-        re.DOTALL,
-    )
-
-    # Find all h3 titles (gives us name + detail_url)
-    h3_matches = list(h3_pattern.finditer(html_str))
-    # Find all property tables
-    table_matches = list(table_pattern.finditer(html_str))
-
-    for i, h3_match in enumerate(h3_matches):
-        detail_url = h3_match.group(1).strip()
-        property_name = _strip_tags(h3_match.group(2)).strip()
-
-        if i >= len(table_matches):
-            break
-
-        table_html = table_matches[i].group(1)
-
-        prop = {
-            "property_name": property_name,
-            "rent": "",
-            "management_fee": "",
-            "floor_plan": "",
-            "area_sqm": "",
-            "railway_line": "",
-            "nearest_station": "",
-            "walk_minutes": "",
-            "address": "",
-            "building_year_month": "",
-            "floor_info": "",
-            "pet_conditions": "",
-            "detail_url": detail_url,
-        }
-
-        # --- Address ---
-        addr_m = re.search(
-            r'icon_address06[^>]*></span>\s*</div>\s*'
-            r'<div\s+class="displayTableCell[^"]*">\s*(.+?)\s*<br\s*/?>',
-            table_html,
-            re.DOTALL,
+        # The title is a link for single-room buildings and plain text otherwise
+        name_m = re.search(
+            r'class="group-building-title-(?:link|text)[^"]*"[^>]*>(.*?)</(?:a|span)>', block, re.DOTALL
         )
-        if addr_m:
-            prop["address"] = _strip_tags(addr_m.group(1)).strip()
+        property_name = _clean_text(name_m.group(1)) if name_m else ""
+        address = _clean_text(_icon_cell(block, "icon_address06"))
 
-        # --- Railway line / station / walk minutes ---
-        train_m = re.search(
-            r'icon_train06[^>]*></span>\s*</div>\s*'
-            r'<div\s+class="displayTableCell[^"]*">\s*(.+?)\s*</div>',
-            table_html,
-            re.DOTALL,
-        )
+        railway_line = nearest_station = walk_minutes = ""
+        train_html = re.split(r'<br\s*/?>', _icon_cell(block, "icon_train06"))[0]
+        train_m = re.match(r'(?:(.+?)[/／])?(\S+?)駅?\s*徒?歩\s*(\d+)分', _clean_text(train_html))
         if train_m:
-            train_text = _clean_text(train_m.group(1))
-            # Format: "路線名/駅名 徒歩N分"
-            line_station_m = re.match(
-                r'(.+?)[/／](.+?)\s+徒歩(\d+)分', train_text
-            )
-            if line_station_m:
-                prop["railway_line"] = line_station_m.group(1).strip()
-                prop["nearest_station"] = line_station_m.group(2).strip()
-                prop["walk_minutes"] = line_station_m.group(3).strip()
+            railway_line = (train_m.group(1) or "").strip()
+            nearest_station = train_m.group(2)
+            walk_minutes = train_m.group(3)
 
-        # --- Extract <tr> rows for structured data ---
-        rows = re.findall(r'<tr>(.*?)</tr>', table_html, re.DOTALL)
+        building_info = _clean_text(_icon_cell(block, "icon_home06"))
+        built_m = re.search(r'新築|\d{4}年\d{1,2}月', building_info)
+        floors_m = re.search(r'(?:地上|地下)?\d+階建', building_info)
+        structure = building_info.rsplit("/", 1)[-1].strip() if "/" in building_info else ""
+
+        rows = re.split(r'<tr\s+id="z_', block)[1:]
         for row in rows:
-            cells = re.findall(r'<t[hd][^>]*>(.*?)</t[hd]>', row, re.DOTALL)
-            # Process pairs of (header, value)
-            j = 0
-            while j < len(cells) - 1:
-                header = _clean_text(cells[j])
-                value = _clean_text(cells[j + 1])
+            floor = _clean_text(_cell(row, "group-bukken-room-cell"))
+            rent_m = re.search(r'class="group-bukken-chinryou">(.*?</span>)\s*</span>', row, re.DOTALL)
+            fee_m = re.search(r'class="group-bukken-kanri">(.*?)</span>', row, re.DOTALL)
+            rent = _clean_text(rent_m.group(1)) if rent_m else ""
+            management_fee = _clean_text(fee_m.group(1)).lstrip("/ ").strip() if fee_m else ""
+            plan_parts = re.split(r'<br\s*/?>', _cell(row, "group-bukken-plan-cell"))
+            detail_m = re.search(r'href="([^"]*/dwelling/show/[^"]+)"', row)
+            labels = re.findall(r'class="group-bukken-label-blue">([^<]*)<', row)
 
-                if '賃料' in header:
-                    prop["rent"] = value
-                    j += 2
-                elif '共益費' in header or '管理費' in header:
-                    prop["management_fee"] = value
-                    j += 2
-                elif '間取' in header and '面積' in header:
-                    # "間取 / 面積" -> value like "1LDK / 50.57m²"
-                    parts = re.split(r'\s*/\s*', value)
-                    if len(parts) >= 2:
-                        prop["floor_plan"] = parts[0].strip()
-                        prop["area_sqm"] = parts[1].strip()
-                    else:
-                        prop["floor_plan"] = value
-                    j += 2
-                elif '階層' in header and '方位' in header:
-                    prop["floor_info"] = value
-                    j += 2
-                elif '築年月' in header:
-                    prop["building_year_month"] = value
-                    j += 2
-                elif '特徴' in header:
-                    # Extract pet conditions from feature tags
-                    pet_tags = re.findall(
-                        r'(ペット[^<]*)', cells[j + 1]
-                    )
-                    prop["pet_conditions"] = (
-                        ", ".join(t.strip() for t in pet_tags) if pet_tags else ""
-                    )
-                    j += 2
-                else:
-                    j += 1
+            detail_url = detail_m.group(1) if detail_m else ""
+            if detail_url.startswith("/"):
+                detail_url = "https://chintai-ex.jp" + detail_url
 
-        results.append(prop)
+            results.append({
+                "property_name": property_name,
+                "rent": rent,
+                "management_fee": management_fee,
+                "floor_plan": _clean_text(plan_parts[0]),
+                "area_sqm": _clean_text(plan_parts[1]) if len(plan_parts) > 1 else "",
+                "railway_line": railway_line,
+                "nearest_station": nearest_station,
+                "walk_minutes": walk_minutes,
+                "address": address,
+                "building_year_month": built_m.group(0) if built_m else "",
+                "floor_info": " / ".join(filter(None, [floor, floors_m.group(0) if floors_m else ""])),
+                "structure": structure,
+                "pet_conditions": ", ".join(l.strip() for l in labels if "ペット" in l),
+                "detail_url": detail_url,
+            })
 
     return results
 
 
-def get_next_page_url_chintai_ex(html_str: str) -> str | None:
-    """Extract the next page URL from chintai-ex.jp search results HTML.
+def get_next_page_url_chintai_ex(html_str: str, current_url: str | None = None) -> str | None:
+    """Only the first page is fetched.
 
-    Looks for the pagination section (pagerKaminari) and finds the link
-    for the page following the currently active page.
-
-    Args:
-        html_str: Raw HTML string of the search results page.
-
-    Returns:
-        Absolute URL string for the next page, or None if on the last page.
+    The page has no pager, ``&page=N`` redirects to page 1, and the load-more
+    API repeats recommended rooms on every page without ending. With the
+    search sorted by 新着順, page 1 (60 rooms) covers each day's new arrivals.
     """
-    # The current page is shown as a <span> (not a link) inside pagerKaminari.
-    # The next page link follows it.
-    # Pattern: active page is <span class="backgroundColor11 ...">N</span>
-    # Next page link is in the next <li>: <a href="...">N+1</a>
-
-    pager_m = re.search(
-        r'<ul\s+class="pagerKaminari">(.*?)</ul>', html_str, re.DOTALL
-    )
-    if not pager_m:
-        return None
-
-    pager_html = pager_m.group(1)
-
-    # Find the active (current) page span, then the very next <a href="...">
-    # that is a numbered page (not the ">>最後" link).
-    active_m = re.search(
-        r'<span\s+class="backgroundColor11[^"]*">[^<]*</span>\s*</li>'
-        r'\s*<li[^>]*>\s*<a\s+href="([^"]*)"[^>]*>(\d+)</a>',
-        pager_html,
-        re.DOTALL,
-    )
-    if active_m:
-        raw_url = active_m.group(1)
-        # Unescape HTML entities
-        from html import unescape
-        url = unescape(raw_url)
-        # Make absolute if relative
-        if url.startswith("/"):
-            url = "https://chintai-ex.jp" + url
-        return url
-
     return None
+
+
+def _icon_cell(block: str, icon: str) -> str:
+    m = re.search(
+        icon + r'"></span></div>\s*<div class="displayTableCell[^"]*">(.*?)</div>',
+        block, re.DOTALL,
+    )
+    return m.group(1) if m else ""
+
+
+def _cell(row: str, cls: str) -> str:
+    m = re.search(r'<td class="' + cls + r'[^"]*">(.*?)</td>', row, re.DOTALL)
+    return m.group(1) if m else ""
 
 
 # ---------------------------------------------------------------------------

@@ -363,7 +363,7 @@ def parse_petkachintai(html_str):
     return results
 
 
-def get_next_page_url_petkachintai(html_str):
+def get_next_page_url_petkachintai(html_str, current_url=None):
     """
     Extract the next page URL from pagination on a petkachintai.net listing page.
 

@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 from datetime import datetime
 
 # Ensure project root is on path
@@ -30,7 +31,7 @@ from parse_pethomeweb import parse_pethomeweb, get_next_page_url_pethomeweb
 from parse_petkachintai import parse_petkachintai, get_next_page_url_petkachintai
 from parse_sengawa import parse_sengawa, get_next_page_url_sengawa, sengawa_url
 from parse_door_ac import parse_door_ac, get_next_page_url_door_ac
-from conditions import area_preference, unmet_conditions
+from conditions import area_preference, unmet_conditions, yen
 
 HEADERS = [
     "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -42,17 +43,19 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 # Search URLs for each site
 URLS = {
-    "賃貸EX": "https://chintai-ex.jp/search/detail?city_code%5B%5D=13101&city_code%5B%5D=13102&city_code%5B%5D=13103&city_code%5B%5D=13104&city_code%5B%5D=13105&city_code%5B%5D=13106&city_code%5B%5D=13107&city_code%5B%5D=13109&city_code%5B%5D=13110&city_code%5B%5D=13111&city_code%5B%5D=13112&city_code%5B%5D=13113&city_code%5B%5D=13114&city_code%5B%5D=13115&city_code%5B%5D=13116&city_code%5B%5D=13117&city_code%5B%5D=13118&city_code%5B%5D=13119&city_code%5B%5D=13120&cond%5Barea%5D%5Bmin%5D=50&cond%5Bbaths%5D%5B%5D=1&cond%5Bbuilt_year%5D=25&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=190000&cond%5Bconditions%5D%5B%5D=64&cond%5Bkitchens%5D%5B%5D=1&cond%5Bkitchens%5D%5B%5D=2&cond%5Blocations%5D%5B%5D=2&cond%5Bother_conditions%5D%5B%5D=4096&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=10&cond%5Bwalk_min%5D=15&prefecture_path=tokyo",
-    "賃貸EX(2)": "https://chintai-ex.jp/search/detail?city_code%5B%5D=13115&city_code%5B%5D=13119&city_code%5B%5D=13120&city_code%5B%5D=13204&city_code%5B%5D=13208&city_code%5B%5D=13229&cond%5Barea%5D%5Bmin%5D=50&cond%5Bbaths%5D%5B%5D=1&cond%5Bbuilt_year%5D=25&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=180000&cond%5Bconditions%5D%5B%5D=64&cond%5Blocations%5D%5B%5D=2&cond%5Bother_conditions%5D%5B%5D=4096&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=10&cond%5Bwalk_min%5D=10&prefecture_path=tokyo",
-    "スモッカ": "https://smocca.jp/search/results?city_code%5B%5D=13101&city_code%5B%5D=13102&city_code%5B%5D=13103&city_code%5B%5D=13104&city_code%5B%5D=13105&city_code%5B%5D=13106&city_code%5B%5D=13107&city_code%5B%5D=13108&city_code%5B%5D=13109&city_code%5B%5D=13110&city_code%5B%5D=13111&city_code%5B%5D=13112&city_code%5B%5D=13113&city_code%5B%5D=13114&city_code%5B%5D=13115&city_code%5B%5D=13116&city_code%5B%5D=13117&city_code%5B%5D=13119&city_code%5B%5D=13120&city_code%5B%5D=13204&cond%5Barea%5D%5Bmin%5D=50&cond%5Bbaths%5D%5B%5D=1&cond%5Bbuilt_year%5D=25&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=190000&cond%5Bconditions%5D%5B%5D=64&cond%5Bkitchens%5D%5B%5D=2&cond%5Blocations%5D%5B%5D=16&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=10&cond%5Bsecurities%5D%5B%5D=2&cond%5Bsort%5D=arrived_at+desc&cond%5Bstructs%5D%5B%5D=2&cond%5Bstructs%5D%5B%5D=3&cond%5Bwalk_min%5D=15&prefecture_path=tokyo&sort_base=smocca_pcvr_a",
-    "ペットアドパーク": "https://www.pet-adpark.jp/es/pref_city_search_list.php?pref=1310_1320&city=1310_1016-1310_1024-1310_1032-1310_1041-1310_1059-1310_1067-1310_1075-1310_1091-1310_1105-1310_1113-1310_1121-1310_1130-1310_1148-1310_1156-1310_1164-1310_1172-1310_1181-1310_1199-1310_1202&tmpl=pet&area=1000&category=chintai&count=30&sortHistory=sort2a&sort=sort8d&bldgType[]=01_03_04&bldgType[]=02&bldgType[]=06&moneyL=&moneyH=190000&kyoekiIncFlg=1&preset_disp=off&spaceL=45&spaceH=&walk=10&tikunensu=&newdate=&begin=0",
+    "賃貸EX": "https://chintai-ex.jp/search/detail?city_code%5B%5D=13101&city_code%5B%5D=13102&city_code%5B%5D=13103&city_code%5B%5D=13104&city_code%5B%5D=13105&city_code%5B%5D=13106&city_code%5B%5D=13107&city_code%5B%5D=13109&city_code%5B%5D=13110&city_code%5B%5D=13111&city_code%5B%5D=13112&city_code%5B%5D=13113&city_code%5B%5D=13114&city_code%5B%5D=13115&city_code%5B%5D=13116&city_code%5B%5D=13117&city_code%5B%5D=13118&city_code%5B%5D=13119&city_code%5B%5D=13120&city_code%5B%5D=13204&city_code%5B%5D=13208&city_code%5B%5D=13219&cond%5Barea%5D%5Bmin%5D=40&cond%5Bbaths%5D%5B%5D=1&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=190000&cond%5Bconditions%5D%5B%5D=64&cond%5Bkitchens%5D%5B%5D=16&cond%5Bother_conditions%5D%5B%5D=2&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=24&cond%5Bwalk_min%5D=10&prefecture_path=tokyo&cond%5Bsort%5D=arrived_at+desc",
+    "賃貸EX(神奈川)": "https://chintai-ex.jp/search/detail?city_code%5B%5D=14109&city_code%5B%5D=14117&city_code%5B%5D=14133&city_code%5B%5D=14134&city_code%5B%5D=14136&city_code%5B%5D=14137&cond%5Barea%5D%5Bmin%5D=40&cond%5Bbaths%5D%5B%5D=1&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=190000&cond%5Bconditions%5D%5B%5D=64&cond%5Bkitchens%5D%5B%5D=16&cond%5Bother_conditions%5D%5B%5D=2&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=24&cond%5Bwalk_min%5D=10&prefecture_path=kanagawa&cond%5Bsort%5D=arrived_at+desc",
+    "賃貸EX(埼玉)": "https://chintai-ex.jp/search/detail?city_code%5B%5D=11227&city_code%5B%5D=11228&city_code%5B%5D=11229&city_code%5B%5D=11230&cond%5Barea%5D%5Bmin%5D=40&cond%5Bbaths%5D%5B%5D=1&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=190000&cond%5Bconditions%5D%5B%5D=64&cond%5Bkitchens%5D%5B%5D=16&cond%5Bother_conditions%5D%5B%5D=2&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=24&cond%5Bwalk_min%5D=10&prefecture_path=saitama&cond%5Bsort%5D=arrived_at+desc",
+    "スモッカ": "https://smocca.jp/search/results?city_code%5B%5D=13101&city_code%5B%5D=13102&city_code%5B%5D=13103&city_code%5B%5D=13104&city_code%5B%5D=13105&city_code%5B%5D=13106&city_code%5B%5D=13107&city_code%5B%5D=13109&city_code%5B%5D=13110&city_code%5B%5D=13111&city_code%5B%5D=13112&city_code%5B%5D=13113&city_code%5B%5D=13114&city_code%5B%5D=13115&city_code%5B%5D=13116&city_code%5B%5D=13117&city_code%5B%5D=13118&city_code%5B%5D=13119&city_code%5B%5D=13120&city_code%5B%5D=13204&city_code%5B%5D=13208&city_code%5B%5D=13219&cond%5Barea%5D%5Bmin%5D=40&cond%5Bbaths%5D%5B%5D=1&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=190000&cond%5Bconditions%5D%5B%5D=64&cond%5Bkitchens%5D%5B%5D=16&cond%5Bother_conditions%5D%5B%5D=2&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=24&cond%5Bstructs%5D%5B%5D=2&cond%5Bstructs%5D%5B%5D=3&cond%5Bwalk_min%5D=10&prefecture_path=tokyo&cond%5Bsort%5D=arrived_at+desc",
+    "スモッカ(神奈川)": "https://smocca.jp/search/results?city_code%5B%5D=14109&city_code%5B%5D=14117&city_code%5B%5D=14133&city_code%5B%5D=14134&city_code%5B%5D=14136&city_code%5B%5D=14137&cond%5Barea%5D%5Bmin%5D=40&cond%5Bbaths%5D%5B%5D=1&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=190000&cond%5Bconditions%5D%5B%5D=64&cond%5Bkitchens%5D%5B%5D=16&cond%5Bother_conditions%5D%5B%5D=2&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=24&cond%5Bstructs%5D%5B%5D=2&cond%5Bstructs%5D%5B%5D=3&cond%5Bwalk_min%5D=10&prefecture_path=kanagawa&cond%5Bsort%5D=arrived_at+desc",
+    "スモッカ(埼玉)": "https://smocca.jp/search/results?city_code%5B%5D=11227&city_code%5B%5D=11228&city_code%5B%5D=11229&city_code%5B%5D=11230&cond%5Barea%5D%5Bmin%5D=40&cond%5Bbaths%5D%5B%5D=1&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=190000&cond%5Bconditions%5D%5B%5D=64&cond%5Bkitchens%5D%5B%5D=16&cond%5Bother_conditions%5D%5B%5D=2&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=24&cond%5Bstructs%5D%5B%5D=2&cond%5Bstructs%5D%5B%5D=3&cond%5Bwalk_min%5D=10&prefecture_path=saitama&cond%5Bsort%5D=arrived_at+desc",
+    "ペットアドパーク": "https://www.pet-adpark.jp/es/pref_city_search_list.php?pref=1310_1320&city=1310_1059-1310_1075-1310_1105-1310_1113-1310_1121-1310_1148-1310_1156-1310_1164-1310_1172-1310_1199-1310_1202&tmpl=pet&area=1000&category=chintai&count=30&sortHistory=sort2a&sort=sort8d&bldgType[]=01_03_04&bldgType[]=02&bldgType[]=06&moneyL=&moneyH=190000&kyoekiIncFlg=1&preset_disp=off&spaceL=50&spaceH=&walk=15&tikunensu=&newdate=&begin=0",
     "AirDoor": "https://airdoor.jp/list?jis=13101%2C13102%2C13103%2C13104%2C13105%2C13106%2C13107%2C13109%2C13110%2C13111%2C13112%2C13113%2C13114%2C13115%2C13116%2C13117%2C13118%2C13119%2C13120%2C13204%2C13208%2C13219%2C14109%2C14117%2C14133%2C14134%2C14136%2C14137%2C11227%2C11228%2C11229%2C11230&ur=190000&iaf=1&uf=10&le=45&ua=50&fp=d-2_ldk-3_ldk-4_more&cs=d-1-2&ca=d-10-15-24-43",
     "R-STORE": "https://www.r-store.jp/search?sb_purpose1%5B%5D=R&sb_r_max=190000&sb_price=1&sb_c%5B%5D=13101&sb_c%5B%5D=13102&sb_c%5B%5D=13103&sb_c%5B%5D=13104&sb_c%5B%5D=13105&sb_c%5B%5D=13106&sb_c%5B%5D=13107&sb_c%5B%5D=13109&sb_c%5B%5D=13110&sb_c%5B%5D=13111&sb_c%5B%5D=13112&sb_c%5B%5D=13113&sb_c%5B%5D=13114&sb_c%5B%5D=13115&sb_c%5B%5D=13116&sb_c%5B%5D=13117&sb_c%5B%5D=13118&sb_c%5B%5D=13119&sb_c%5B%5D=13120&sb_c%5B%5D=13204&sb_c%5B%5D=13208&sb_c%5B%5D=13219&sb_walk_from=10&sb_area_up=45&sb_floor_plan%5B%5D=2LDK&sb_floor_plan%5B%5D=2SLDK&sb_floor_plan%5B%5D=3LDK&sb_floor_plan%5B%5D=3SLDK&sb_floor_plan%5B%5D=4LDK&sb_floor_plan%5B%5D=4SLDK&sb_floor_plan%5B%5D=5K%E4%BB%A5%E4%B8%8A&sb_pet%5B%5D=%E5%B0%8F%E5%9E%8B%E7%8A%AC%E5%8F%AF&sb_pet%5B%5D=%E7%8C%AB%E5%8F%AF&sb_get_full1=true",
     "ペットホームウェブ": "https://www.pethomeweb.com/chintai/tokyo/list/?AR2=A2_55yo-A2_54yo-A2_55t2-A2_54li-A2_54r3-A2_55fl-A2_546l-A2_55la-A2_54hv-A2_5568-A2_54dy-A2_53z4-A2_53v1-A2_55q6-A2_55id-A2_5637-A2_54bi-A2_542j-A2_54vg-A2_575r-A2_55yz&SO=1&CH=1-33&CO=1&ME=8-18&EW=15&CN=9&KO=91-92-30-82-12-9-26",
     "ペット可賃貸.net": "https://petkachintai.net/archives/category/pet-friendly-rentals-in-tokyo",
-    "スモッカ(2)": "https://smocca.jp/search/results?city_code%5B%5D=13109&city_code%5B%5D=13112&city_code%5B%5D=13115&city_code%5B%5D=13119&city_code%5B%5D=13208&cond%5Barea%5D%5Bmin%5D=50&cond%5Bbaths%5D%5B%5D=1&cond%5Bbuilt_year%5D=30&cond%5Bchinryou%5D%5Binclude_kanrihi%5D=true&cond%5Bchinryou%5D%5Bmax%5D=190000&cond%5Bconditions%5D%5B%5D=64&cond%5Blocations%5D%5B%5D=16&cond%5Bplans%5D%5Bmax%5D=44&cond%5Bplans%5D%5Bmin%5D=10&cond%5Bstructs%5D%5B%5D=2&cond%5Bstructs%5D%5B%5D=3&cond%5Bwalk_min%5D=15&prefecture_path=tokyo",
     "仙川レントハウス": sengawa_url(1),
-    "DOOR賃貸": "https://door.ac/list?utf8=%E2%9C%93&cond%5Bcities%5D%5B%5D=13109&cond%5Bcities%5D%5B%5D=13112&cond%5Bcities%5D%5B%5D=13115&cond%5Bcities%5D%5B%5D=13119&cond%5Bcities%5D%5B%5D=13208&cond%5Bsort%5D=-inquiry_price&cond%5Bfee_min%5D=&cond%5Bfee_max%5D=190000&cond%5Bincluded%5D=1&cond%5Bwalk_time%5D=10&cond%5Bsqmeter_min%5D=45&cond%5Bsqmeter_max%5D=&cond%5Bage_min%5D=&cond%5Bage_max%5D=&cond%5Bfeatures%5D%5B%5D=7",
+    "DOOR賃貸": "https://door.ac/list?utf8=%E2%9C%93&cond%5Bcities%5D%5B%5D=13109&cond%5Bcities%5D%5B%5D=13112&cond%5Bcities%5D%5B%5D=13115&cond%5Bcities%5D%5B%5D=13119&cond%5Bcities%5D%5B%5D=13208&cond%5Bsort%5D=-inquiry_price&cond%5Bfee_min%5D=&cond%5Bfee_max%5D=180000&cond%5Bincluded%5D=1&cond%5Bwalk_time%5D=15&cond%5Bsqmeter_min%5D=50&cond%5Bsqmeter_max%5D=&cond%5Bage_min%5D=&cond%5Bage_max%5D=30&cond%5Bfeatures%5D%5B%5D=7",
 }
 
 # Max pages per site
@@ -63,16 +66,20 @@ MAX_PAGES = {
 # Sources whose search isn't limited to our municipalities (Tokyo-wide blog)
 UNSCOPED_SITES = {"ペット可賃貸.net"}
 
-# The 仙川 REST endpoint returns HTTP 500 without a Referer
+# Extra headers by URL: the 仙川 REST API returns HTTP 500 without a Referer;
+# スモッカ's load-more API returns 400 without X-Requested-With, and sending
+# that header to page 1 drops the load-more link.
 EXTRA_HEADERS = {
-    "仙川レントハウス": ["-H", "Referer: https://sengawa.re-ws.jp/feature/2679/"],
+    "sengawa.re-ws.jp/wp-json/": ["-H", "Referer: https://sengawa.re-ws.jp/feature/2679/"],
+    "smocca.jp/api/": ["-H", "X-Requested-With: XMLHttpRequest"],
 }
 
 
-def curl_fetch(url: str, extra_headers=()) -> str | None:
+def curl_fetch(url: str) -> str | None:
     """Fetch URL with curl and browser headers. Returns HTML string or None."""
+    extra = [h for key, headers in EXTRA_HEADERS.items() if key in url for h in headers]
     result = subprocess.run(
-        ["curl", "-s", "-w", "\n%{http_code}", *HEADERS, *extra_headers, url],
+        ["curl", "-s", "-w", "\n%{http_code}", *HEADERS, *extra, url],
         capture_output=True, text=True, timeout=30,
     )
     lines = result.stdout.rsplit("\n", 1)
@@ -87,7 +94,6 @@ def curl_fetch(url: str, extra_headers=()) -> str | None:
 
 def _normalize(s):
     """Normalize text for stable comparison (NFKC, lowercase, strip address details)."""
-    import unicodedata
     if not s:
         return ""
     s = unicodedata.normalize("NFKC", s)
@@ -111,6 +117,28 @@ def _prop_key(p):
     return f"{name}|{addr}|{rent}|{plan}"
 
 
+def _room_key(p):
+    """Cross-site identity: same town, layout, size and total rent.
+
+    Sites name the same room differently (e.g. "高島平Ⅲ 3階" vs "高島平III"),
+    so _prop_key alone would notify one room once per site.
+    """
+    nfkc = lambda v: unicodedata.normalize("NFKC", str(v or ""))
+    addr = re.sub(r"\s+|^(東京都|神奈川県|埼玉県)", "", nfkc(p.get("address")))
+    town = re.match(r"\D*", addr).group()
+    plan_m = re.match(r"\d+S?(?:LDK|DK|K)|\d+R", nfkc(p.get("floor_plan")).upper())
+    area_m = re.search(r"\d+(?:\.\d+)?", nfkc(p.get("area_sqm")))
+    rent = yen(p.get("rent"))
+    if not (town and plan_m and area_m and rent):
+        return None
+    total = rent + (yen(p.get("management_fee")) or 0)
+    return f"room:{town}|{plan_m.group()}|{round(float(area_m.group()))}|{total}"
+
+
+def _identity_keys(p):
+    return {k for k in (_prop_key(p), _room_key(p)) if k}
+
+
 def fetch_all_pages(site_name, first_url, parse_fn, next_page_fn, max_pages=30):
     """Fetch all pages for a site, returning combined property list."""
     all_props = []
@@ -118,14 +146,14 @@ def fetch_all_pages(site_name, first_url, parse_fn, next_page_fn, max_pages=30):
     page = 1
 
     while url and page <= max_pages:
-        html = curl_fetch(url, EXTRA_HEADERS.get(site_name, ()))
+        html = curl_fetch(url)
         if not html:
             print(f"  {site_name} page {page}: fetch failed")
             break
         props = parse_fn(html)
         all_props.extend(props)
         print(f"  {site_name} page {page}: {len(props)} properties")
-        url = next_page_fn(html)
+        url = next_page_fn(html, url)
         page += 1
 
     return all_props
@@ -252,14 +280,16 @@ def main():
     # Site configs: (name, parse_fn, next_page_fn)
     site_configs = [
         ("賃貸EX", parse_chintai_ex, get_next_page_url_chintai_ex),
-        ("賃貸EX(2)", parse_chintai_ex, get_next_page_url_chintai_ex),
+        ("賃貸EX(神奈川)", parse_chintai_ex, get_next_page_url_chintai_ex),
+        ("賃貸EX(埼玉)", parse_chintai_ex, get_next_page_url_chintai_ex),
         ("スモッカ", parse_smocca, get_next_page_url_smocca),
+        ("スモッカ(神奈川)", parse_smocca, get_next_page_url_smocca),
+        ("スモッカ(埼玉)", parse_smocca, get_next_page_url_smocca),
         ("ペットアドパーク", parse_petadpark, get_next_page_url_petadpark),
         ("AirDoor", parse_airdoor, get_next_page_url_airdoor),
         ("R-STORE", parse_rstore, get_next_page_url_rstore),
         ("ペットホームウェブ", parse_pethomeweb, get_next_page_url_pethomeweb),
         ("ペット可賃貸.net", parse_petkachintai, get_next_page_url_petkachintai),
-        ("スモッカ(2)", parse_smocca, get_next_page_url_smocca),
         ("仙川レントハウス", parse_sengawa, get_next_page_url_sengawa),
         ("DOOR賃貸", parse_door_ac, get_next_page_url_door_ac),
     ]
@@ -306,16 +336,20 @@ def main():
 
     # Diff: find new listings (not previously seen)
     now_iso = datetime.now().isoformat()
-    new_properties = [p for p in unique_properties if _prop_key(p) not in seen_history]
+    new_properties = [p for p in unique_properties if not _identity_keys(p) & seen_history.keys()]
     unseen_count = len(new_properties)
 
     # Notify only listings that satisfy the マンションノート conditions
     matching = []
+    notified_keys = set()
     for p in new_properties:
         area_scoped = p.get("source_site") not in UNSCOPED_SITES
-        if not unmet_conditions(p, area_scoped):
-            p["area_preference"] = area_preference(p, area_scoped)
-            matching.append(p)
+        keys = _identity_keys(p)
+        if unmet_conditions(p, area_scoped) or keys & notified_keys:
+            continue
+        notified_keys |= keys
+        p["area_preference"] = area_preference(p, area_scoped)
+        matching.append(p)
     new_properties = matching
     preference_order = {"理想": 0, "住みたい": 1, "": 2}
     new_properties.sort(key=lambda p: preference_order[p["area_preference"]])
@@ -323,9 +357,8 @@ def main():
 
     # Add only NEW properties to seen history (don't refresh existing timestamps)
     for p in unique_properties:
-        key = _prop_key(p)
-        if key not in seen_history:
-            seen_history[key] = now_iso
+        for key in _identity_keys(p):
+            seen_history.setdefault(key, now_iso)
 
     if is_first_run:
         print(f"\n初回実行のためレポートなし。{len(unique_properties)}件のデータを保存しました。")

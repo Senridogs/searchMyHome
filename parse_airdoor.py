@@ -121,6 +121,7 @@ def parse_airdoor(html_str: str) -> list[dict]:
                 "address": address,
                 "building_year_month": constructed,
                 "floor_info": floor_info,
+                "structure": building.get("construction_type") or "",
                 "pet_conditions": combined_pet,
                 "detail_url": detail_url,
             }
@@ -129,7 +130,7 @@ def parse_airdoor(html_str: str) -> list[dict]:
     return results
 
 
-def get_next_page_url_airdoor(html_str: str) -> str | None:
+def get_next_page_url_airdoor(html_str: str, current_url: str | None = None) -> str | None:
     """Return the next results page URL, or None on the last page.
 
     The payload carries the page count in ``paginatorInfo.total`` and the
