@@ -8,7 +8,6 @@ Usage from the workflow:  python3 line_notify.py data/line_messages.json
 (env LINE_TOKEN and LINE_GROUP_ID)
 """
 
-import hashlib
 import json
 import os
 import sys
@@ -16,16 +15,11 @@ import urllib.error
 import urllib.request
 
 from conditions import building_age, number, yen
+from ranking import listing_key
 
 CARDS_PER_CAROUSEL = 12  # LINE carousel limit
 MAX_CAROUSELS = 4        # a push carries at most 5 messages: 1 header + 4 carousels
 MEMO_PREFIX = "📝メモ: "
-
-
-def listing_key(p) -> str:
-    """Short stable id for a listing, used in postbacks."""
-    basis = "|".join(str(p.get(k) or "") for k in ("address", "floor_plan", "area_sqm", "rent"))
-    return hashlib.sha1(basis.encode("utf-8")).hexdigest()[:12]
 
 
 def _title(p) -> str:

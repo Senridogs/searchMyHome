@@ -1,0 +1,61 @@
+name: 新着物件の通知
+
+on:
+  # Claude ルーチンが AI の整理結果をプッシュしたら通知する
+  push:
+    paths:
+      - data/ai_review.json
+  schedule:
+    # ルーチンが動かなかった日も、JST 21:00 (UTC 12:00) に基本のマッチ度順で通知する
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: notify
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Prepare report and LINE cards
+        id: prepare
+        continue-on-error: true
+        run: python3 notify.py prepare
+
+      - name: Create GitHub Issue
+        if: steps.prepare.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create "新着物件" --color "1d76db" --description "新着賃貸物件" 2>/dev/null || true
+          gh issue create --title "🏠 新着物件レポート $(date +'%Y-%m-%d')" --body-file data/report.md --label "新着物件"
+
+      - name: Send LINE notification
+        if: steps.prepare.outcome == 'success' && vars.LINE_CHANNEL_ACCESS_TOKEN != ''
+        env:
+          LINE_TOKEN: ${{ vars.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_GROUP_ID: ${{ vars.LINE_GROUP_ID }}
+        run: python3 line_notify.py data/line_messages.json
+
+      - name: Clear the queue
+        if: steps.prepare.outcome == 'success'
+        run: |
+          python3 notify.py done
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A data/
+          git diff --staged --quiet || git commit -m "Notify new listings $(date +'%Y-%m-%d')"
+          git pull --rebase
+          git push

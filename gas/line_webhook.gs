@@ -1,6 +1,7 @@
 /**
  * LINE の ❤️お気に入り / ✖却下 とメモを Google スプレッドシートに記録する Webhook。
- * 記録は毎日の物件チェック（ranking.py）が読み、次回からのマッチ度判定に使う。
+ * 記録は毎日の Claude ルーチン（review_tool.py show）が読み、次回からのマッチ度判定に使う。
+ * リポジトリは公開なので、メモはリポジトリには保存せず、このスプレッドシートにだけ置く。
  *
  * ■ 設定手順
  * 1. Google スプレッドシートを新規作成し、メニュー「拡張機能 > Apps Script」を開く。
@@ -14,8 +15,9 @@
  *    としてデプロイし、表示された「ウェブアプリのURL」をコピーする。
  * 5. LINE Developers のチャネル設定「Messaging API設定」で、
  *      Webhook URL にそのURLを貼り付け、「Webhookの利用」をオンにする。
- * 6. GitHub リポジトリの Settings > Secrets and variables > Actions に Secret を追加する。
- *      FEEDBACK_URL = ウェブアプリのURL + "?token=" + FEEDBACK_TOKEN の値
+ * 6. Claude Code のクラウド環境の設定（セッション上部の環境メニュー > 編集）で、
+ *      環境変数 FEEDBACK_URL = ウェブアプリのURL + "?token=" + FEEDBACK_TOKEN の値
+ *    を追加し、ネットワークアクセスで script.google.com と script.googleusercontent.com を許可する。
  *
  * Apps Script では LINE の署名ヘッダーを読めないため、代わりに通知先グループからの
  * イベントだけを受け付け、記録の読み出しは合言葉（FEEDBACK_TOKEN）で守っている。

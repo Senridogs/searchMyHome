@@ -41,8 +41,7 @@ from parse_hatomark import HATOMARK_URL, parse_hatomark, get_next_page_url_hatom
 from parse_tohto import TOHTO_URL, parse_tohto, get_next_page_url_tohto
 from parse_door_ac import parse_door_ac, get_next_page_url_door_ac
 from conditions import area_preference, unmet_conditions, yen
-from line_notify import build_messages
-from ranking import rank
+from ranking import listing_key, rule_score
 
 HEADERS = [
     "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -77,8 +76,6 @@ URLS = {
     "TOB": "https://www.tob-home.com/area_c1/bknarea_to13112/?address%5B%5D=13112&address%5B%5D=13115&address%5B%5D=13204&address%5B%5D=13208&pF=0&pC=19&kykn=0&kykn=1&rkn=0&shkn=0&aF=40&aC=0&years=0&wT=10&md%5B%5D=2LDK&md%5B%5D=3LDK&md%5B%5D=4LDK_up&op%5B%5D=option0100&op%5B%5D=option0402&op%5B%5D=option0500&orderby=modified&lmt=50",
     "DOOR賃貸": "https://door.ac/list?utf8=%E2%9C%93&cond%5Bcities%5D%5B%5D=13109&cond%5Bcities%5D%5B%5D=13112&cond%5Bcities%5D%5B%5D=13115&cond%5Bcities%5D%5B%5D=13119&cond%5Bcities%5D%5B%5D=13208&cond%5Bsort%5D=-inquiry_price&cond%5Bfee_min%5D=&cond%5Bfee_max%5D=180000&cond%5Bincluded%5D=1&cond%5Bwalk_time%5D=15&cond%5Bsqmeter_min%5D=50&cond%5Bsqmeter_max%5D=&cond%5Bage_min%5D=&cond%5Bage_max%5D=30&cond%5Bfeatures%5D%5B%5D=7",
 }
-
-ISSUE_BODY_LIMIT = 60000
 
 # Max pages per site
 MAX_PAGES = {
@@ -238,61 +235,6 @@ def fetch_esweb_site(site_name, page_url):
     return fetch_all_pages(site_name, first, parse_esweb, get_next_page_url_esweb)
 
 
-def _write_markdown_report(new_properties, all_properties, is_first_run, path):
-    """Write a markdown report of new listings to a file."""
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    lines = [f"# 新着物件レポート ({now})\n"]
-
-    if is_first_run:
-        lines.append(f"初回実行: {len(all_properties)}件のデータを保存しました。\n")
-    elif not new_properties:
-        lines.append("新着物件はありませんでした。\n")
-    else:
-        lines.append(f"**新着 {len(new_properties)}件**（マッチ度の高い順）\n")
-        lines.append("---\n")
-        for p in new_properties:
-            name = p.get('ai_title') or p.get('property_name', '不明')
-            url = p.get('detail_url', '')
-            rent = p.get('rent', '?')
-            mgmt = p.get('management_fee', '?')
-            plan = p.get('floor_plan', '?')
-            area = p.get('area_sqm', p.get('area', '?'))
-            line = p.get('railway_line', '')
-            station = p.get('nearest_station', '?')
-            walk = p.get('walk_minutes', '?')
-            addr = p.get('address', '?')
-            pet = p.get('pet_conditions', '?')
-            site = p.get('source_site', '?')
-            built = p.get('building_year_month') or '?'
-            pref = p.get('area_preference')
-
-            lines.append(f"### [{name}]({url})\n")
-            lines.append(f"| 項目 | 内容 |")
-            lines.append(f"|------|------|")
-            lines.append(f"| マッチ度 | {p.get('match_score', '-')} |")
-            if p.get('ai_comment'):
-                lines.append(f"| AIコメント | {p['ai_comment']} |")
-            if pref:
-                lines.append(f"| エリア | {pref}エリア |")
-            lines.append(f"| 家賃 | {rent}（管理費 {mgmt}） |")
-            lines.append(f"| 間取り | {plan} / {area} |")
-            lines.append(f"| 最寄駅 | {line} {station} 徒歩{walk}分 |")
-            lines.append(f"| 築年月 | {built} |")
-            lines.append(f"| 住所 | {addr} |")
-            lines.append(f"| ペット | {pet} |")
-            lines.append(f"| サイト | {site} |")
-            lines.append("")
-
-    text = "\n".join(lines)
-    if len(text) > ISSUE_BODY_LIMIT:
-        # GitHub rejects issue bodies over 65,536 characters
-        cut = text.rfind("\n### [", 0, ISSUE_BODY_LIMIT)
-        rest = text[cut:].count("\n### [")
-        text = text[:cut] + f"\n\n…ほか{rest}件（マッチ度の低い物件）は省略しました。"
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
-
-
 def _load_seen_history(path):
     """Load seen property history (permanent, no expiry)."""
     if not os.path.exists(path):
@@ -411,7 +353,10 @@ def main():
         p["area_preference"] = area_preference(p, area_scoped)
         matching.append(p)
     print(f"\n未確認 {unseen_count}件のうち条件に合う物件: {len(matching)}件")
-    new_properties = rank(matching)
+    for p in matching:
+        p["match_score"] = rule_score(p)
+        p["key"] = listing_key(p)
+    new_properties = sorted(matching, key=lambda p: p["match_score"], reverse=True)
 
     # Add only NEW properties to seen history (don't refresh existing timestamps)
     for p in unique_properties:
@@ -440,24 +385,30 @@ def main():
                 print(f"  URL: {p.get('detail_url', '')}")
                 print()
 
-    # Write markdown report for CI/GitHub Issue usage
-    md_path = os.path.join(DATA_DIR, "report.md")
-    _write_markdown_report(new_properties, unique_properties, is_first_run, md_path)
+    # Queue new matches for notify.py (after the daily AI review); keep unsent ones
+    added = 0 if is_first_run else _add_to_pending(new_properties)
+    print(f"未通知リストに追加: {added}件")
 
-    # LINE cards for the workflow to push (none on the first run)
-    line_path = os.path.join(DATA_DIR, "line_messages.json")
-    with open(line_path, "w", encoding="utf-8") as f:
-        json.dump([] if is_first_run else build_messages(new_properties), f, ensure_ascii=False)
-
-    # Save seen history (keeps last 7 days)
     _save_seen_history(history_path, seen_history)
 
     print("完了。")
-    return len(new_properties)
+    return added
+
+
+def _add_to_pending(properties):
+    path = os.path.join(DATA_DIR, "pending.json")
+    pending = []
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            pending = json.load(f)
+    queued = {p["key"] for p in pending}
+    added = [p for p in properties if p["key"] not in queued]
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(pending + added, f, ensure_ascii=False, indent=2)
+    return len(added)
 
 
 if __name__ == "__main__":
     new_count = main()
-    # Exit with code 0 if new listings found (for CI), 1 if none
-    # This lets GitHub Actions conditionally create issues
+    # Exit 1 when nothing new was queued, so the workflow sends the "no new listings" message
     sys.exit(0 if new_count else 1)

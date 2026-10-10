@@ -2,13 +2,12 @@ name: 賃貸物件チェック
 
 on:
   schedule:
-    # 毎日JST 18:00 (UTC 9:00) に実行
-    - cron: '0 9 * * *'
+    # 毎日JST 17:00 (UTC 8:00) に収集。17:50 の Claude ルーチンが整理し、notify.yml が LINE に送る
+    - cron: '0 8 * * *'
   workflow_dispatch: # 手動実行も可能
 
 permissions:
   contents: write
-  issues: write
 
 jobs:
   check:
@@ -22,34 +21,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
-        run: pip install anthropic
-
       - name: Run rental check
         id: check
         continue-on-error: true
-        env:
-          # 任意: 登録するとAIがマッチ度を判定し、LINEの❤️/✖の記録を反映する
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          FEEDBACK_URL: ${{ secrets.FEEDBACK_URL }}
         run: python3 check_rentals.py
-
-      - name: Create GitHub Issue if new listings found
-        if: steps.check.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh label create "新着物件" --color "1d76db" --description "新着賃貸物件" 2>/dev/null || true
-          TITLE="🏠 新着物件レポート $(date +'%Y-%m-%d')"
-          BODY=$(cat data/report.md)
-          gh issue create --title "$TITLE" --body "$BODY" --label "新着物件"
-
-      - name: Send LINE notification (new listings)
-        if: steps.check.outcome == 'success' && vars.LINE_CHANNEL_ACCESS_TOKEN != ''
-        env:
-          LINE_TOKEN: ${{ vars.LINE_CHANNEL_ACCESS_TOKEN }}
-          LINE_GROUP_ID: ${{ vars.LINE_GROUP_ID }}
-        run: python3 line_notify.py data/line_messages.json
 
       - name: Send LINE notification (no new listings)
         if: steps.check.outcome == 'failure' && vars.LINE_CHANNEL_ACCESS_TOKEN != ''
@@ -72,6 +47,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/latest.json data/seen_history.json
+          git add data/latest.json data/seen_history.json data/pending.json
           git diff --staged --quiet || git commit -m "Update rental data $(date +'%Y-%m-%d')"
+          git pull --rebase
           git push
