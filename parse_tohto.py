@@ -16,9 +16,9 @@ BASE_URL = "https://new.tohto.ne.jp"
 TOHTO_PARAMS = [
     ("search_equip[0]", "32"),  # ペット相談
     ("search_madori[0]", "7"), ("search_madori[1]", "10"), ("search_madori[2]", "11"),  # 2LDK(+S) / 3LDK(+S) / 4K〜
-    ("search_price_limit", "200000"),  # 20万円未満 (管理費別; 19万円込みは conditions.py で判定)
+    ("search_price_limit", "250000"),  # 25万円未満 (管理費別; 管理費込みの上限は conditions.py で判定)
     ("search_area", "40"),  # 40m²以上 (選択肢に45がない)
-    ("search_station", "10"),  # 駅徒歩10分以内
+    ("search_station", "15"),  # 駅徒歩15分以内
     ("page_disp", "30"),
 ]
 TOHTO_URL = f"{BASE_URL}/search-result/page-1.html?{urlencode(TOHTO_PARAMS)}"

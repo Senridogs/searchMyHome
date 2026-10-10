@@ -9,11 +9,11 @@ BASE_URL = "https://www.eheya.net"
 EHEYA_PARAMS = [
     ("val_code", "22644"), ("val_code", "22956"), ("val_code", "22987"),
     ("val_code", "22776"), ("val_code", "22817"), ("val_code", "22823"),
-    ("price_to", "190000"), ("price_and_cost", "1"),  # 賃料 19万円以下, 管理費等込み
+    ("price_to", "220000"), ("price_and_cost", "1"),  # 賃料 22万円以下, 管理費等込み
     # 2LDK / 3LDK / 4K以上 (the site has no separate 4LDK)
     ("house_plan", "2LDK"), ("house_plan", "3LDK"), ("house_plan", "4K_more"),
-    ("use_part_area_from", "45"),  # 専有面積 45m2以上
-    ("walk_from_station_x", "10"),  # 駅徒歩 10分以内 (バス便は含めない)
+    ("use_part_area_from", "40"),  # 専有面積 40m2以上
+    ("walk_from_station_x", "15"),  # 駅徒歩 15分以内 (バス便は含めない)
     # 築年数: 最長が30年以内のため指定しない
     ("structure_code", "1"), ("structure_code", "2"),  # 鉄筋系 / 鉄骨系
     ("pet_code", "1"),  # ペット相談可

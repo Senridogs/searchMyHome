@@ -47,7 +47,7 @@ jobs:
         env:
           LINE_TOKEN: ${{ vars.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_GROUP_ID: ${{ vars.LINE_GROUP_ID }}
-        run: python3 line_notify.py data/line_messages.json
+        run: python3 line_notify.py data/latest_messages.json
 
       - name: Clear the queue
         if: steps.prepare.outcome == 'success'

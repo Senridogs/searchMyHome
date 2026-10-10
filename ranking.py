@@ -11,7 +11,8 @@ import json
 import os
 import urllib.request
 
-from conditions import building_age, number, yen
+from conditions import (MAX_AGE_YEARS, MAX_TOTAL_RENT, MAX_WALK_MIN, MIN_AREA_SQM, SETTINGS,
+                        building_age, number, yen)
 
 WISH_LIST = """\
 【必須条件】賃料19万円以下（管理費込み）、2LDK/3LDK/4LDK以上、駅徒歩10分以内、専有面積45㎡以上、
@@ -54,6 +55,8 @@ data/ai_review.json に次の形で書く:
 - score: マッチ度。rule_score（希望条件の段階から機械的に計算した点数）を出発点に、エリアの好み、
   狙っている駅との近さ、評価履歴から読み取れる好み・嫌うポイントを加味して決める。
   却下された物件と同じ理由が当てはまる物件は大きく下げ、お気に入りに似た物件は上げる。
+  「💔取り消し」はお気に入りを外したもので、好みの手がかりとしては使わない。
+  数値の条件は「現在の条件（LINEで設定）」を優先する。
 - title: 通知に表示する物件名（24文字まで）。物件名が「京王線 千歳烏山駅 2階建 築3年」のように
   建物名でない場合は「町名＋間取り（最寄駅）」などで分かりやすくする。
 - comment: 45文字までの一言。良い点と気になる点。リポジトリは公開なので、評価履歴のメモの文面は
@@ -61,6 +64,23 @@ data/ai_review.json に次の形で書く:
 - duplicate_of: 同じ部屋が別名・別サイトで重複していると判断できる場合、残す方の物件のkey。
   所在地・間取り・面積・階がほぼ同じなら同じ部屋とみなす。重複でなければ空文字。
 """
+
+
+def current_conditions() -> str:
+    """The conditions currently set from LINE; these override the numbers in WISH_LIST."""
+    s = SETTINGS
+    lines = [
+        f"- 賃料: {s['max_rent'] / 10000:g}万円以下（管理費込み）",
+        f"- 駅徒歩: {s['max_walk']}分以内",
+        f"- 専有面積: {s['min_area']}㎡以上",
+        f"- 築年数: {s['max_age']}年以内",
+        f"- 間取り: {s['min_rooms']}LDK以上",
+    ]
+    if s["add_stations"]:
+        lines.append("- 追加した希望エリア: " + "、".join(s["add_stations"]))
+    if s["avoid_stations"]:
+        lines.append("- 除外したエリア: " + "、".join(s["avoid_stations"]))
+    return "\n".join(lines)
 
 
 def listing_key(p) -> str:
@@ -85,10 +105,10 @@ def rule_score(p) -> int:
     total = rent + (yen(p.get("management_fee")) or 0) if rent else None
     plan = str(p.get("floor_plan") or "")
     score = (
-        _tier(total, [(lambda v: v <= 140_000, 25), (lambda v: v <= 160_000, 18), (lambda v: v <= 190_000, 8)], 12)
-        + _tier(number(p.get("walk_minutes")), [(lambda v: v <= 5, 20), (lambda v: v <= 7, 15), (lambda v: v <= 10, 8)], 10)
-        + _tier(number(p.get("area_sqm")), [(lambda v: v >= 70, 20), (lambda v: v >= 50, 14), (lambda v: v >= 45, 6)], 10)
-        + _tier(building_age(p.get("building_year_month")), [(lambda v: v <= 5, 10), (lambda v: v <= 30, 7), (lambda v: v <= 50, 3)], 5)
+        _tier(total, [(lambda v: v <= 140_000, 25), (lambda v: v <= 160_000, 18), (lambda v: v <= MAX_TOTAL_RENT, 8)], 12)
+        + _tier(number(p.get("walk_minutes")), [(lambda v: v <= 5, 20), (lambda v: v <= 7, 15), (lambda v: v <= MAX_WALK_MIN, 8)], 10)
+        + _tier(number(p.get("area_sqm")), [(lambda v: v >= 70, 20), (lambda v: v >= 50, 14), (lambda v: v >= MIN_AREA_SQM, 6)], 10)
+        + _tier(building_age(p.get("building_year_month")), [(lambda v: v <= 5, 10), (lambda v: v <= 30, 7), (lambda v: v <= MAX_AGE_YEARS, 3)], 5)
         + {"理想": 20, "住みたい": 12}.get(p.get("area_preference") or "", 0)
         + (5 if plan[:1] in ("2", "3") else 3)
     )
@@ -96,11 +116,11 @@ def rule_score(p) -> int:
 
 
 def load_feedback() -> list[dict]:
-    """❤️/✖ records from the LINE webhook (gas/line_webhook.gs), if FEEDBACK_URL is set."""
-    url = os.environ.get("FEEDBACK_URL")
+    """❤️/✖ records from the LINE webhook (gas/line_webhook.gs), if GAS_URL is set."""
+    url = os.environ.get("GAS_URL")
     if not url:
         return []
-    with urllib.request.urlopen(url, timeout=30) as res:
+    with urllib.request.urlopen(url + "&type=feedback", timeout=30) as res:
         data = json.loads(res.read().decode("utf-8"))
     return data if isinstance(data, list) else []
 

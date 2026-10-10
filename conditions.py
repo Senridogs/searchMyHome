@@ -1,18 +1,22 @@
 """Search conditions from マンションノート, applied to every scraped listing.
 
-Missing rent/area/walk/age values pass: listing pages often omit them, and
-the site-side search URL already filters on them.
+The numbers and the extra stations come from data/settings.json, which the
+user changes from LINE (see settings.py). Missing rent/area/walk/age values
+pass: listing pages often omit them, and the site search already filters.
 """
 
 import re
 import unicodedata
 from datetime import date
 
-MAX_TOTAL_RENT = 190_000  # 賃料+管理費
-MIN_AREA_SQM = 45
-MAX_WALK_MIN = 10
-MAX_AGE_YEARS = 50
-MIN_LDK_ROOMS = 2  # 2LDK / 3LDK / 4LDK以上
+from settings import load as load_settings
+
+SETTINGS = load_settings()
+MAX_TOTAL_RENT = SETTINGS["max_rent"]  # 賃料+管理費
+MIN_AREA_SQM = SETTINGS["min_area"]
+MAX_WALK_MIN = SETTINGS["max_walk"]
+MAX_AGE_YEARS = SETTINGS["max_age"]
+MIN_LDK_ROOMS = SETTINGS["min_rooms"]  # 2 = 2LDK / 3LDK / 4LDK以上
 
 # 住めたら理想的なエリア
 IDEAL_STATIONS = {
@@ -73,7 +77,16 @@ def _keys(stations):
     return {station_key(s) for s in stations}
 
 
-_IDEAL, _WANT, _AVOID = _keys(IDEAL_STATIONS), _keys(WANT_STATIONS), _keys(AVOID_STATIONS)
+# Stations or municipalities the user added / excluded from LINE override the lists above
+_MUNI = re.compile(r"[区市町村]$")
+_ADDED = set(SETTINGS["add_stations"])
+_EXCLUDED = set(SETTINGS["avoid_stations"])
+_IDEAL = _keys(IDEAL_STATIONS | _ADDED) - _keys(_EXCLUDED)
+_WANT = _keys(WANT_STATIONS) - _keys(_EXCLUDED)
+_AVOID = _keys(AVOID_STATIONS | _EXCLUDED) - _keys(_ADDED)
+IDEAL_AREAS = (IDEAL_AREAS | {a for a in _ADDED if _MUNI.search(a)}) - _EXCLUDED
+WANT_AREAS = WANT_AREAS - _EXCLUDED
+AVOID_AREAS = (AVOID_AREAS | {a for a in _EXCLUDED if _MUNI.search(a)}) - _ADDED
 
 
 def yen(value):
@@ -123,7 +136,7 @@ def area_preference(p, area_scoped=True):
     """
     station = station_key(p.get("nearest_station"))
     muni = municipality(p.get("address"))
-    if station in _AVOID:
+    if station in _AVOID or muni in _EXCLUDED:  # an area excluded from LINE beats a liked station
         return None
     if station in _IDEAL or muni in IDEAL_AREAS:
         return "理想"

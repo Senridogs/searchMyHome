@@ -26,9 +26,9 @@ HATOMARK_PARAMS = [
     ("cpet[]", "CPET03"),  # ペット相談
     # 2LDK / 3LDK / 4LDK / 5LDK / 6LDK以上 (S付きも含む)
     *[("floor_plan[]", c) for c in ("2XXSLDK", "3XXSLDK", "4XXSLDK", "5XXSLDK", "6ZZZZZZ")],
-    ("price_r_to", "190000"), ("mng_in_price", "true"),  # 管理費込み 19万円以下
-    ("eki_walk", "10"),  # 駅徒歩10分以内
-    ("building_area_all_from", "45"),  # 45m²以上
+    ("price_r_to", "220000"), ("mng_in_price", "true"),  # 管理費込み 22万円以下
+    ("eki_walk", "15"),  # 駅徒歩15分以内
+    ("building_area_all_from", "40"),  # 40m²以上
     ("sort1", "ASRT11"),  # 更新日 新しい順
     ("limit", "50"),
 ]

@@ -16,13 +16,13 @@ PITAT_STATIONS = {
 PITAT_PARAMS = [
     ("articleClass", "0"),  # 居住用
     *[(f"railRoadList[{code}]", code) for code in PITAT_STATIONS],
-    ("cnryTo", "190000"), ("kkFlg", "true"),  # 賃料 19万円以下, 共益費・管理費含む
+    ("cnryTo", "220000"), ("kkFlg", "true"),  # 賃料 22万円以下, 共益費・管理費含む
     # 2LDK / 3LDK / 4LDK以上 (S付き・LK も含む)
     ("floorPlan[6]", "2LDK#2SLDK#2LK#2SLK"),
     ("floorPlan[9]", "3LDK#3SLDK#3LK#3SLK"),
     ("floorPlan[12]", "4LDK#4SLDK#4LK#4SLK#5"),
-    ("symnDc.from", "45"),  # 専有面積 45㎡以上
-    ("timeRequired", "10"),  # 駅徒歩 10分以内
+    ("symnDc.from", "40"),  # 専有面積 40㎡以上
+    ("timeRequired", "15"),  # 駅徒歩 15分以内
     ("kodawari[39]", "室内洗濯機置場"),
     ("kodawari[48]", "コンロ2口以上"),
     ("kodawari[50]", "バス・トイレ別"),

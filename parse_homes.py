@@ -14,11 +14,11 @@ HOMES_PARAMS = [
     ("cond[roseneki][86304935]", "86304935"),  # 京王線 千歳烏山
     ("cond[roseneki][86304936]", "86304936"),  # 京王線 仙川
     ("cond[roseneki][86304937]", "86304937"),  # 京王線 つつじヶ丘
-    ("cond[monthmoneyroomh]", "19"), ("cond[kanrihi]", "1"),  # 賃料 19万円以下, 管理費込み
+    ("cond[monthmoneyroomh]", "22"), ("cond[kanrihi]", "1"),  # 賃料 22万円以下, 管理費込み
     # 2LDK / 3LDK / 4LDK以上
     ("cond[madori][25]", "25"), ("cond[madori][35]", "35"), ("cond[madori][45-]", "45-"),
-    ("cond[housearea]", "45"),  # 専有面積 45m2以上
-    ("cond[walkminutesh]", "10"),  # 駅徒歩 10分以内
+    ("cond[housearea]", "40"),  # 専有面積 40m2以上
+    ("cond[walkminutesh]", "15"),  # 駅徒歩 15分以内
     # 築年数: 最長が30年以内のため指定しない
     ("cond[housekouzougroup][rebar]", "rebar"),  # 鉄筋系
     ("cond[housekouzougroup][steelframe]", "steelframe"),  # 鉄骨系

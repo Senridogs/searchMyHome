@@ -11,7 +11,7 @@ import json
 import os
 import sys
 
-from ranking import REVIEW_GUIDE, WISH_LIST, load_feedback
+from ranking import REVIEW_GUIDE, WISH_LIST, current_conditions, load_feedback
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 LISTING_FIELDS = ("key", "match_score", "property_name", "rent", "management_fee", "floor_plan",
@@ -29,7 +29,8 @@ def _pending():
 
 def show() -> int:
     pending = _pending()
-    print("# 希望条件\n" + WISH_LIST)
+    print("# 現在の条件（LINEで設定）\n" + current_conditions() + "\n")
+    print("# 希望条件（マンションノート）\n" + WISH_LIST)
     print("# 整理のしかた\n" + REVIEW_GUIDE)
     print("# 評価履歴（❤️お気に入り／✖却下）")
     try:
@@ -37,10 +38,10 @@ def show() -> int:
     except (OSError, ValueError) as e:
         feedback = []
         print(f"（読み込めませんでした: {e}）")
-    if not os.environ.get("FEEDBACK_URL"):
-        print("（FEEDBACK_URL が未設定のため、評価履歴はありません）")
+    if not os.environ.get("GAS_URL"):
+        print("（GAS_URL が未設定のため、評価履歴はありません）")
     for f in feedback:
-        mark = {"fav": "❤️", "reject": "✖"}.get(f.get("action"), f.get("action"))
+        mark = {"fav": "❤️", "reject": "✖", "unfav": "💔取り消し"}.get(f.get("action"), f.get("action"))
         memo = f" / メモ: {f['comment']}" if f.get("comment") else ""
         print(f"- {mark} {f.get('summary', '')}{memo}")
     print(f"\n# 未通知の物件（{len(pending)}件。rule_score は match_score の値）")

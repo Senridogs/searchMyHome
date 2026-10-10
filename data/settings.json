@@ -1,0 +1,9 @@
+{
+  "max_rent": 190000,
+  "max_walk": 10,
+  "min_area": 45,
+  "max_age": 50,
+  "min_rooms": 2,
+  "add_stations": [],
+  "avoid_stations": []
+}

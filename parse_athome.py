@@ -11,10 +11,10 @@ ATHOME_PARAMS = [
     ("pref", "13"),
     ("station", "fujimigaoka,kugayama,mitakadai,chitosekarasuyama,sengawa,tsutsujigaoka"),
     ("basic", ",".join([
-        "kc133", "kc201",  # 賃料 19万円以下, 管理費等含む
+        "kc153", "kc201",  # 賃料 22万円以下, 管理費等含む
         "km010", "km015", "km021",  # 2LDK / 3LDK / 4LDK以上
-        "kt007",  # 専有面積 45m2以上
-        "ke004",  # 駅徒歩 10分以内
+        "kt006",  # 専有面積 40m2以上
+        "ke005",  # 駅徒歩 15分以内
         "kn001",  # 築年数: 最長が40年以内のため指定なし
         "kh001", "kh002",  # 鉄筋系 / 鉄骨系
     ])),

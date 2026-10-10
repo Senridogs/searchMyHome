@@ -4,7 +4,7 @@ Tapping ❤️ or ✖ sends a postback to the webhook (gas/line_webhook.gs), whi
 records it, and opens the keyboard pre-filled with "📝メモ: " so the reason can
 be typed straight away. The webhook stores both for the next ranking run.
 
-Usage from the workflow:  python3 line_notify.py data/line_messages.json
+Usage from the workflow:  python3 line_notify.py data/latest_messages.json
 (env LINE_TOKEN and LINE_GROUP_ID)
 """
 
@@ -47,6 +47,19 @@ def _spec_text(p) -> str:
     age = building_age(p.get("building_year_month"))
     parts = [p.get("floor_plan") or "", f"{area:g}㎡" if area else "", f"築{age}年" if age is not None else ""]
     return " / ".join(x for x in parts if x) or "間取り不明"
+
+
+def notified_entry(p, date: str) -> dict:
+    """What the LINE bot shows for a listing in the ❤️ list (data/notified.json)."""
+    station = f"🚶 {p.get('nearest_station')} 徒歩{p.get('walk_minutes')}分" if p.get("nearest_station") else ""
+    return {
+        "title": _title(p),
+        "details": " / ".join(x for x in (f"💰 {_rent_text(p)}", f"🏠 {_spec_text(p)}", station) if x),
+        "url": p.get("detail_url") or "",
+        "score": p.get("match_score"),
+        "comment": p.get("ai_comment") or "",
+        "date": date,
+    }
 
 
 def _text(text, **style):
@@ -130,7 +143,7 @@ def push(messages: list[dict]) -> None:
 
 if __name__ == "__main__":
     with open(sys.argv[1], encoding="utf-8") as f:
-        msgs = json.load(f)
+        msgs = json.load(f)["messages"]
     if msgs:
         try:
             push(msgs)
