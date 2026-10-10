@@ -1,64 +1,104 @@
-"""Agency sites on the es-web platform (*.re-ws.jp etc.), e.g. レントハウス仙川店.
+"""Agency sites on the es-web platform (*.re-ws.jp, yshome.jp, ...).
 
-robots.txt on these sites disallows /wp-json/, which is the only source of
-their list pages, so listings are read from sitemap-advertisement.xml plus
-the individual /rent/<id>/ detail pages (allowed, Crawl-delay: 5).
+A feature/search page embeds ``var localize = {"restRoute": ..., "searchParams":
+{...}}`` built from its query string (``rs=1`` makes it honour the query), and
+the browser then GETs restRoute with those params, receiving {"html": ...}.
 """
 
 import html
+import json
 import re
-import unicodedata
+from urllib.parse import urlencode
 
 
-def _clean(fragment: str) -> str:
+def rest_url(page: str) -> str | None:
+    """The REST URL for page 1 of the search embedded in a feature/search page."""
+    m = re.search(r"var localize = (\{.*?\});\s*/\* \]\]>", page, re.DOTALL)
+    if not m:
+        return None
+    localize = json.loads(m.group(1))
+    params = []
+    for key, value in localize["searchParams"].items():
+        if isinstance(value, list):  # jQuery serialisation: key[]=a&key[]=b
+            params += [(f"{key}[]", v) for v in value]
+        else:
+            params.append((key, "" if value is None else value))
+    return localize["restRoute"] + "?" + urlencode(params)
+
+
+def _text(fragment: str) -> str:
     text = html.unescape(re.sub(r"<[^>]+>", " ", fragment))
     return re.sub(r"\s+", " ", text).strip()
 
 
-def sitemap_rent_urls(xml: str) -> list[str]:
-    """Rent detail URLs, most recently modified first."""
-    entries = re.findall(
-        r"<loc>([^<]+/rent/\d+/)</loc>\s*(?:<lastmod>([^<]+)</lastmod>)?", xml
-    )
-    return [url for url, _ in sorted(entries, key=lambda e: e[1], reverse=True)]
+def _results_html(raw: str) -> str:
+    if raw.lstrip().startswith("{"):
+        try:
+            return json.loads(raw).get("html", "")
+        except ValueError:
+            return ""
+    return raw
 
 
-def parse_esweb_detail(page: str, url: str) -> dict | None:
-    """One rental from a detail page, or None unless pets are allowed."""
-    body = re.sub(r"<script.*?</script>|<style.*?</style>", "", page, flags=re.DOTALL)
-    # The page repeats several fields in a second, cleaner table; keep the last value
-    fields = {
-        _clean(k): _clean(v)
-        for k, v in re.findall(r"<th[^>]*>(.*?)</th>\s*<td[^>]*>(.*?)</td>", body, re.DOTALL)
-    }
-    conditions = " ".join(fields.get(k, "") for k in ("入居条件", "主要設備"))
-    if not re.search(r"ペット(相談|可)", conditions):
+def _td(block: str, cls: str) -> str:
+    m = re.search(rf'<td class="{cls}[^"]*">(.*?)</td>', block, re.DOTALL)
+    return _text(m.group(1)) if m else ""
+
+
+def parse_esweb(raw: str) -> list[dict]:
+    page = _results_html(raw)
+    properties = []
+
+    for block in re.split(r'<article class="data', page)[1:]:
+        address = re.sub(r"\s+", "", _td(block, "feature-detail-data__address"))
+        built = re.sub(r"[（(].*$", "", _td(block, "feature-detail-data__age")).strip()
+
+        railway_line = nearest_station = walk_minutes = ""
+        access_m = re.search(
+            r'<td class="feature-detail-data__access">(.*?)(?:<br>|</td>)', block, re.DOTALL
+        )
+        if access_m:
+            am = re.match(r"(\S+)\s+(\S+?)駅\s+徒歩(\d+)分", _text(access_m.group(1)))
+            if am:
+                railway_line = am.group(1)
+                nearest_station = re.sub(r"[（(].*?[）)]", "", am.group(2))
+                walk_minutes = am.group(3)
+
+        for row in re.split(r'<td class="feature-detail-condition__others1 checkbox">', block)[1:]:
+            fav_m = re.search(r'<span class="fav es-fav[^"]*"(.*?)>', row, re.DOTALL)
+            link_m = re.search(r'<a href="(https?://[^"]+/rent/\d+/)"', row)
+            if not fav_m or not link_m:
+                continue
+            attrs = {
+                k: html.unescape(v)
+                for k, v in re.findall(r'data-([\w-]+)="([^"]*)"', fav_m.group(1))
+            }
+            floor_m = re.search(r'feature-detail-condition__floor pc">\s*(.*?)\s*<', row)
+            properties.append({
+                "property_name": attrs.get("building-name") or address,
+                "rent": attrs.get("price", ""),
+                "management_fee": attrs.get("management-fee", ""),
+                "floor_plan": attrs.get("house-plan", ""),
+                "area_sqm": attrs.get("major-area", ""),
+                "railway_line": railway_line,
+                "nearest_station": nearest_station,
+                "walk_minutes": walk_minutes,
+                "address": address,
+                "building_year_month": built,
+                "floor_info": floor_m.group(1) if floor_m else "",
+                "pet_conditions": "ペット相談可",
+                "detail_url": link_m.group(1),
+            })
+
+    return properties
+
+
+def get_next_page_url_esweb(raw: str, current_url: str | None = None) -> str | None:
+    page = _results_html(raw)
+    current_m = re.search(r'class="pager current" data-page="(\d+)"', page)
+    if not current_m or not current_url:
         return None
-
-    stations = []
-    for line, station, walk in re.findall(r"(\S+)\s+(\S+?)駅\s*徒歩(\d+)分", fields.get("交通", "")):
-        stations.append((int(walk), line, re.sub(r"（.*?）|\(.*?\)", "", station)))
-    walk, line, station = min(stations) if stations else ("", "", "")
-
-    fees = re.findall(r"[\d,]+(?=円)", fields.get("管理費/共益費/雑費", ""))
-    fee_total = sum(int(f.replace(",", "")) for f in fees)
-
-    return {
-        "property_name": fields.get("物件名", ""),
-        "rent": re.sub(r"\s+", "", fields.get("賃料", "")),
-        "management_fee": f"{fee_total}円" if fees else "",
-        "floor_plan": re.split(r"[（(]", fields.get("間取り", ""))[0].strip(),
-        "area_sqm": fields.get("面積（専有/延床/土地）", "").split("/")[0].strip(),
-        "railway_line": line,
-        "nearest_station": station,
-        "walk_minutes": str(walk),
-        "address": re.sub(r"\s+|（周辺地図）", "", fields.get("所在地", "")),
-        "building_year_month": re.split(r"[（(]", fields.get("築年月", ""))[0].strip(),
-        "floor_info": fields.get("所在階/階数", ""),
-        "structure": fields.get("構造", ""),
-        "pet_conditions": "ペット相談可",
-        "equipment": unicodedata.normalize(
-            "NFKC", " ".join(fields.get(k, "") for k in ("主要設備", "設備"))
-        ),
-        "detail_url": url,
-    }
+    next_page = int(current_m.group(1)) + 1
+    if f'data-page="{next_page}"' not in page:
+        return None
+    return re.sub(r"([?&]page_num=)\d+", rf"\g<1>{next_page}", current_url)
