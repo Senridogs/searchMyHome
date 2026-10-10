@@ -33,8 +33,14 @@ from parse_petkachintai import parse_petkachintai, get_next_page_url_petkachinta
 from parse_esweb import rest_url, parse_esweb, get_next_page_url_esweb
 from parse_ielove import parse_ielove, get_next_page_url_ielove
 from parse_suumo import SUUMO_URL, SUUMO_AREA_URLS, parse_suumo, get_next_page_url_suumo
+from parse_homes import HOMES_URL, parse_homes, get_next_page_url_homes
+from parse_athome import ATHOME_URL, parse_athome, get_next_page_url_athome
+from parse_eheya import EHEYA_URL, parse_eheya, get_next_page_url_eheya
+from parse_pitat import PITAT_URL, parse_pitat, get_next_page_url_pitat
 from parse_door_ac import parse_door_ac, get_next_page_url_door_ac
 from conditions import area_preference, unmet_conditions, yen
+from line_notify import build_messages
+from ranking import rank
 
 HEADERS = [
     "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -59,9 +65,15 @@ URLS = {
     "ペット可賃貸.net": "https://petkachintai.net/archives/category/pet-friendly-rentals-in-tokyo",
     "SUUMO(重点6駅)": SUUMO_URL,
     **SUUMO_AREA_URLS,
+    "HOME'S(重点6駅)": HOMES_URL,
+    "アットホーム(重点6駅)": ATHOME_URL,
+    "いい部屋ネット(重点6駅)": EHEYA_URL,
+    "ピタットハウス(重点6駅)": PITAT_URL,
     "TOB": "https://www.tob-home.com/area_c1/bknarea_to13112/?address%5B%5D=13112&address%5B%5D=13115&address%5B%5D=13204&address%5B%5D=13208&pF=0&pC=19&kykn=0&kykn=1&rkn=0&shkn=0&aF=40&aC=0&years=0&wT=10&md%5B%5D=2LDK&md%5B%5D=3LDK&md%5B%5D=4LDK_up&op%5B%5D=option0100&op%5B%5D=option0402&op%5B%5D=option0500&orderby=modified&lmt=50",
     "DOOR賃貸": "https://door.ac/list?utf8=%E2%9C%93&cond%5Bcities%5D%5B%5D=13109&cond%5Bcities%5D%5B%5D=13112&cond%5Bcities%5D%5B%5D=13115&cond%5Bcities%5D%5B%5D=13119&cond%5Bcities%5D%5B%5D=13208&cond%5Bsort%5D=-inquiry_price&cond%5Bfee_min%5D=&cond%5Bfee_max%5D=180000&cond%5Bincluded%5D=1&cond%5Bwalk_time%5D=15&cond%5Bsqmeter_min%5D=50&cond%5Bsqmeter_max%5D=&cond%5Bage_min%5D=&cond%5Bage_max%5D=30&cond%5Bfeatures%5D%5B%5D=7",
 }
+
+ISSUE_BODY_LIMIT = 60000
 
 # Max pages per site
 MAX_PAGES = {
@@ -89,7 +101,8 @@ ESWEB_SITES = {
 }
 
 # Seconds between requests to a site (robots.txt Crawl-delay)
-CRAWL_DELAY = {"仙川レントハウス": 5, "ワイエス・ホーム": 5}
+CRAWL_DELAY = {"仙川レントハウス": 5, "ワイエス・ホーム": 5, "HOME'S(重点6駅)": 1, "アットホーム(重点6駅)": 1,
+               "いい部屋ネット(重点6駅)": 1, "ピタットハウス(重点6駅)": 1}
 
 
 def curl_fetch(url: str, attempts: int = 2) -> str | None:
@@ -208,10 +221,10 @@ def _write_markdown_report(new_properties, all_properties, is_first_run, path):
     elif not new_properties:
         lines.append("新着物件はありませんでした。\n")
     else:
-        lines.append(f"**新着 {len(new_properties)}件**\n")
+        lines.append(f"**新着 {len(new_properties)}件**（マッチ度の高い順）\n")
         lines.append("---\n")
         for p in new_properties:
-            name = p.get('property_name', '不明')
+            name = p.get('ai_title') or p.get('property_name', '不明')
             url = p.get('detail_url', '')
             rent = p.get('rent', '?')
             mgmt = p.get('management_fee', '?')
@@ -229,6 +242,9 @@ def _write_markdown_report(new_properties, all_properties, is_first_run, path):
             lines.append(f"### [{name}]({url})\n")
             lines.append(f"| 項目 | 内容 |")
             lines.append(f"|------|------|")
+            lines.append(f"| マッチ度 | {p.get('match_score', '-')} |")
+            if p.get('ai_comment'):
+                lines.append(f"| AIコメント | {p['ai_comment']} |")
             if pref:
                 lines.append(f"| エリア | {pref}エリア |")
             lines.append(f"| 家賃 | {rent}（管理費 {mgmt}） |")
@@ -240,51 +256,12 @@ def _write_markdown_report(new_properties, all_properties, is_first_run, path):
             lines.append(f"| サイト | {site} |")
             lines.append("")
 
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-
-
-def _write_line_message(new_properties, is_first_run, path):
-    """Write a plain-text message for LINE notification with property details."""
-    if is_first_run or not new_properties:
-        # No detailed message needed for these cases
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("")
-        return
-
-    lines = [f"🏠 新着物件 {len(new_properties)}件\n"]
-
-    for p in new_properties:
-        name = p.get('property_name', '不明')
-        rent = p.get('rent', '?')
-        mgmt = p.get('management_fee', '')
-        plan = p.get('floor_plan', '?')
-        area = p.get('area_sqm', p.get('area', '?'))
-        station = p.get('nearest_station', '?')
-        walk = p.get('walk_minutes', '?')
-        url = p.get('detail_url', '')
-        site = p.get('source_site', '')
-
-        mgmt_str = f"(管理費{mgmt})" if mgmt and mgmt != '?' else ""
-        pref = p.get('area_preference')
-        lines.append(f"━━━━━━━━━━")
-        if pref:
-            lines.append(f"⭐ {pref}エリア")
-        lines.append(f"📍 {name}")
-        lines.append(f"💰 {rent}{mgmt_str}")
-        lines.append(f"🏠 {plan} / {area}")
-        lines.append(f"🚶 {station} 徒歩{walk}分")
-        if site:
-            lines.append(f"📋 {site}")
-        if url:
-            lines.append(f"🔗 {url}")
-        lines.append("")
-
-    # LINE Push Message limit: 5 messages, each up to 5000 chars
     text = "\n".join(lines)
-    if len(text) > 4900:
-        text = text[:4800] + "\n\n…他にもあります。GitHub Issueで全件確認できます。"
-
+    if len(text) > ISSUE_BODY_LIMIT:
+        # GitHub rejects issue bodies over 65,536 characters
+        cut = text.rfind("\n### [", 0, ISSUE_BODY_LIMIT)
+        rest = text[cut:].count("\n### [")
+        text = text[:cut] + f"\n\n…ほか{rest}件（マッチ度の低い物件）は省略しました。"
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
 
@@ -332,6 +309,10 @@ def main():
         ("TOB", parse_ielove, get_next_page_url_ielove),
         ("SUUMO(重点6駅)", parse_suumo, get_next_page_url_suumo),
         *((name, parse_suumo, get_next_page_url_suumo) for name in SUUMO_AREA_URLS),
+        ("HOME'S(重点6駅)", parse_homes, get_next_page_url_homes),
+        ("アットホーム(重点6駅)", parse_athome, get_next_page_url_athome),
+        ("いい部屋ネット(重点6駅)", parse_eheya, get_next_page_url_eheya),
+        ("ピタットハウス(重点6駅)", parse_pitat, get_next_page_url_pitat),
         ("DOOR賃貸", parse_door_ac, get_next_page_url_door_ac),
     ]
 
@@ -399,10 +380,8 @@ def main():
         notified_keys |= keys
         p["area_preference"] = area_preference(p, area_scoped)
         matching.append(p)
-    new_properties = matching
-    preference_order = {"理想": 0, "住みたい": 1, "": 2}
-    new_properties.sort(key=lambda p: preference_order[p["area_preference"]])
-    print(f"\n未確認 {unseen_count}件のうち条件に合う物件: {len(new_properties)}件")
+    print(f"\n未確認 {unseen_count}件のうち条件に合う物件: {len(matching)}件")
+    new_properties = rank(matching)
 
     # Add only NEW properties to seen history (don't refresh existing timestamps)
     for p in unique_properties:
@@ -435,9 +414,10 @@ def main():
     md_path = os.path.join(DATA_DIR, "report.md")
     _write_markdown_report(new_properties, unique_properties, is_first_run, md_path)
 
-    # Write LINE notification text
-    line_path = os.path.join(DATA_DIR, "line_message.txt")
-    _write_line_message(new_properties, is_first_run, line_path)
+    # LINE cards for the workflow to push (none on the first run)
+    line_path = os.path.join(DATA_DIR, "line_messages.json")
+    with open(line_path, "w", encoding="utf-8") as f:
+        json.dump([] if is_first_run else build_messages(new_properties), f, ensure_ascii=False)
 
     # Save seen history (keeps last 7 days)
     _save_seen_history(history_path, seen_history)

@@ -22,9 +22,16 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install dependencies
+        run: pip install anthropic
+
       - name: Run rental check
         id: check
         continue-on-error: true
+        env:
+          # 任意: 登録するとAIがマッチ度を判定し、LINEの❤️/✖の記録を反映する
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FEEDBACK_URL: ${{ secrets.FEEDBACK_URL }}
         run: python3 check_rentals.py
 
       - name: Create GitHub Issue if new listings found
@@ -42,23 +49,7 @@ jobs:
         env:
           LINE_TOKEN: ${{ vars.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_GROUP_ID: ${{ vars.LINE_GROUP_ID }}
-        run: |
-          MSG=$(cat data/line_message.txt)
-          if [ -z "$MSG" ]; then
-            MSG="🏠 新着物件があります！"
-          fi
-          # Escape for JSON
-          MSG_JSON=$(echo "$MSG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))")
-          curl -s -X POST https://api.line.me/v2/bot/message/push \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${LINE_TOKEN}" \
-            -d "{
-              \"to\": \"${LINE_GROUP_ID}\",
-              \"messages\": [{
-                \"type\": \"text\",
-                \"text\": ${MSG_JSON}
-              }]
-            }"
+        run: python3 line_notify.py data/line_messages.json
 
       - name: Send LINE notification (no new listings)
         if: steps.check.outcome == 'failure' && vars.LINE_CHANNEL_ACCESS_TOKEN != ''

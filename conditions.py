@@ -89,7 +89,7 @@ def yen(value):
     return int(m.group()) if m else None
 
 
-def _number(value):
+def number(value):
     m = re.search(r"\d+(?:\.\d+)?", unicodedata.normalize("NFKC", str(value or "")))
     return float(m.group()) if m else None
 
@@ -146,10 +146,10 @@ def unmet_conditions(p, area_scoped=True) -> list[str]:
         failed.append("賃料")
     if not _plan_ok(p):
         failed.append("間取り")
-    walk = _number(p.get("walk_minutes"))
+    walk = number(p.get("walk_minutes"))
     if walk is not None and walk > MAX_WALK_MIN:
         failed.append("駅徒歩")
-    area = _number(p.get("area_sqm") or p.get("area"))
+    area = number(p.get("area_sqm") or p.get("area"))
     if area is not None and area < MIN_AREA_SQM:
         failed.append("専有面積")
     age = building_age(p.get("building_year_month"))
