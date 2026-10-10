@@ -40,8 +40,12 @@ def _results_html(raw: str) -> str:
     return raw
 
 
+# Feature pages use "feature-detail-*" classes, search pages "kokoku-list-*"
+_PREFIX = r"(?:feature-detail|kokoku-list)"
+
+
 def _td(block: str, cls: str) -> str:
-    m = re.search(rf'<td class="{cls}[^"]*">(.*?)</td>', block, re.DOTALL)
+    m = re.search(rf'<td class="{_PREFIX}-{cls}[^"]*">(.*?)</td>', block, re.DOTALL)
     return _text(m.group(1)) if m else ""
 
 
@@ -50,12 +54,12 @@ def parse_esweb(raw: str) -> list[dict]:
     properties = []
 
     for block in re.split(r'<article class="data', page)[1:]:
-        address = re.sub(r"\s+", "", _td(block, "feature-detail-data__address"))
-        built = re.sub(r"[（(].*$", "", _td(block, "feature-detail-data__age")).strip()
+        address = re.sub(r"\s+", "", _td(block, "data__address"))
+        built = re.sub(r"[（(].*$", "", _td(block, "data__age")).strip()
 
         railway_line = nearest_station = walk_minutes = ""
         access_m = re.search(
-            r'<td class="feature-detail-data__access">(.*?)(?:<br>|</td>)', block, re.DOTALL
+            rf'<td class="{_PREFIX}-data__access">(.*?)(?:<br>|</td>)', block, re.DOTALL
         )
         if access_m:
             am = re.match(r"(\S+)\s+(\S+?)駅\s+徒歩(\d+)分", _text(access_m.group(1)))
@@ -64,18 +68,18 @@ def parse_esweb(raw: str) -> list[dict]:
                 nearest_station = re.sub(r"[（(].*?[）)]", "", am.group(2))
                 walk_minutes = am.group(3)
 
-        for row in re.split(r'<td class="feature-detail-condition__others1 checkbox">', block)[1:]:
+        for row in re.split(rf'<td class="{_PREFIX}-condition__others1 checkbox">', block)[1:]:
             fav_m = re.search(r'<span class="fav es-fav[^"]*"(.*?)>', row, re.DOTALL)
-            link_m = re.search(r'<a href="(https?://[^"]+/rent/\d+/)"', row)
+            link_m = re.search(r'<a href="(https?://[^"]+/rent/\d+/?)"', row)
             if not fav_m or not link_m:
                 continue
             attrs = {
                 k: html.unescape(v)
                 for k, v in re.findall(r'data-([\w-]+)="([^"]*)"', fav_m.group(1))
             }
-            floor_m = re.search(r'feature-detail-condition__floor pc">\s*(.*?)\s*<', row)
+            floor_m = re.search(rf'{_PREFIX}-condition__floor pc">\s*(.*?)\s*<', row)
             properties.append({
-                "property_name": attrs.get("building-name") or address,
+                "property_name": attrs.get("building-name", "").strip() or address,
                 "rent": attrs.get("price", ""),
                 "management_fee": attrs.get("management-fee", ""),
                 "floor_plan": attrs.get("house-plan", ""),

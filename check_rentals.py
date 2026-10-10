@@ -37,6 +37,8 @@ from parse_homes import HOMES_URL, parse_homes, get_next_page_url_homes
 from parse_athome import ATHOME_URL, parse_athome, get_next_page_url_athome
 from parse_eheya import EHEYA_URL, parse_eheya, get_next_page_url_eheya
 from parse_pitat import PITAT_URL, parse_pitat, get_next_page_url_pitat
+from parse_hatomark import HATOMARK_URL, parse_hatomark, get_next_page_url_hatomark
+from parse_tohto import TOHTO_URL, parse_tohto, get_next_page_url_tohto
 from parse_door_ac import parse_door_ac, get_next_page_url_door_ac
 from conditions import area_preference, unmet_conditions, yen
 from line_notify import build_messages
@@ -69,6 +71,9 @@ URLS = {
     "アットホーム(重点6駅)": ATHOME_URL,
     "いい部屋ネット(重点6駅)": EHEYA_URL,
     "ピタットハウス(重点6駅)": PITAT_URL,
+    "ハトマーク(重点6駅)": HATOMARK_URL,
+    "東都": TOHTO_URL,
+    "アイホープハウス": "https://www.i-hope-house.co.jp/area_c1/bknshiku_ih13115/?address%5B%5D=13112&address%5B%5D=13115&address%5B%5D=13204&address%5B%5D=13208&pF=0&pC=19&kykn=1&aF=40&wT=10&md%5B%5D=2LDK&md%5B%5D=3LDK&md%5B%5D=4LDK_up&op%5B%5D=option0101&orderby=",
     "TOB": "https://www.tob-home.com/area_c1/bknarea_to13112/?address%5B%5D=13112&address%5B%5D=13115&address%5B%5D=13204&address%5B%5D=13208&pF=0&pC=19&kykn=0&kykn=1&rkn=0&shkn=0&aF=40&aC=0&years=0&wT=10&md%5B%5D=2LDK&md%5B%5D=3LDK&md%5B%5D=4LDK_up&op%5B%5D=option0100&op%5B%5D=option0402&op%5B%5D=option0500&orderby=modified&lmt=50",
     "DOOR賃貸": "https://door.ac/list?utf8=%E2%9C%93&cond%5Bcities%5D%5B%5D=13109&cond%5Bcities%5D%5B%5D=13112&cond%5Bcities%5D%5B%5D=13115&cond%5Bcities%5D%5B%5D=13119&cond%5Bcities%5D%5B%5D=13208&cond%5Bsort%5D=-inquiry_price&cond%5Bfee_min%5D=&cond%5Bfee_max%5D=180000&cond%5Bincluded%5D=1&cond%5Bwalk_time%5D=15&cond%5Bsqmeter_min%5D=50&cond%5Bsqmeter_max%5D=&cond%5Bage_min%5D=&cond%5Bage_max%5D=30&cond%5Bfeatures%5D%5B%5D=7",
 }
@@ -90,22 +95,42 @@ EXTRA_HEADERS = {
 }
 
 # Sites that answer a search with no hits with HTTP 404 instead of an empty list
-EMPTY_ON_404 = ("tob-home.com/",)
+EMPTY_ON_404 = ("tob-home.com/", "i-hope-house.co.jp/")
 
 # es-web agency sites: feature pages (rs=1 applies the query) whose results come
 # from the REST API (see parse_esweb.py). Personal, once-a-day use, so the API
 # is read despite robots.txt, keeping the requested 5s Crawl-delay.
+# es-web search conditions (rs=1 makes a page apply its query string)
+ESWEB_COMMON = (
+    "rs=1&price_to=190000&price_include_amount_management_fee=1&occupied_area_from=45.0"
+    "&walk_from_station_minutes_to=10&house_plan_summary_code%5B%5D=203&house_plan_summary_code%5B%5D=303"
+    "&house_plan_summary_code%5B%5D=403&house_plan_summary_code%5B%5D=599"
+    "&structure_summary_code%5B%5D=1&structure_summary_code%5B%5D=2&sub%5B%5D=is_pet_ok"
+    "&sub%5B%5D=separate_bath_toilet&sub%5B%5D=has_multiple_gas_stove&sub%5B%5D=has_landry_room"
+    "&sort=new_arrival&item_per_page=30"
+)
+# ワイエス・ホーム: マンション・アパート in 三鷹市 and 杉並区 (city codes without the prefecture part)
+YS_AREA = (
+    "&boshu_kind_summary_code%5B%5D=1&boshu_kind_summary_code%5B%5D=2&pref=%E6%9D%B1%E4%BA%AC%E9%83%BD"
+    "&city%5B%5D=204&city%5B%5D=115&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%89%E9%B7%B9%E5%B8%82"
+    "&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%9D%89%E4%B8%A6%E5%8C%BA"
+)
 ESWEB_SITES = {
-    "仙川レントハウス": "https://sengawa.re-ws.jp/feature/2679/?price_to=190000&price_include_amount_management_fee=1&occupied_area_from=45.0&walk_from_station_minutes_to=10&house_plan_summary_code%5B%5D=203&house_plan_summary_code%5B%5D=303&house_plan_summary_code%5B%5D=403&house_plan_summary_code%5B%5D=599&structure_summary_code%5B%5D=1&structure_summary_code%5B%5D=2&sub%5B%5D=is_pet_ok&sub%5B%5D=separate_bath_toilet&sub%5B%5D=has_multiple_gas_stove&sub%5B%5D=has_landry_room&sort=new_arrival&item_per_page=30&rs=1",
-    "ワイエス・ホーム": "https://www.yshome.jp/feature/2739/?price_to=190000&price_include_amount_management_fee=1&occupied_area_from=45.0&walk_from_station_minutes_to=10&house_plan_summary_code%5B%5D=203&house_plan_summary_code%5B%5D=303&house_plan_summary_code%5B%5D=403&house_plan_summary_code%5B%5D=599&structure_summary_code%5B%5D=1&structure_summary_code%5B%5D=2&sub%5B%5D=is_pet_ok&sub%5B%5D=separate_bath_toilet&sub%5B%5D=has_multiple_gas_stove&sub%5B%5D=has_landry_room&sort=new_arrival&item_per_page=30&rs=1&boshu_kind_summary_code%5B%5D=1&boshu_kind_summary_code%5B%5D=2&pref=%E6%9D%B1%E4%BA%AC%E9%83%BD&city%5B%5D=204&city%5B%5D=115&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%89%E9%B7%B9%E5%B8%82&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%9D%89%E4%B8%A6%E5%8C%BA",
+    "レントハウス(全店)": f"https://renthouse.re-ws.jp/rent/search/area/pref_13/?{ESWEB_COMMON}&pref=%E6%9D%B1%E4%BA%AC%E9%83%BD&city%5B%5D=112&city%5B%5D=115&city%5B%5D=204&city%5B%5D=208&city%5B%5D=219&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%96%E7%94%B0%E8%B0%B7%E5%8C%BA&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%9D%89%E4%B8%A6%E5%8C%BA&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%89%E9%B7%B9%E5%B8%82&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E8%AA%BF%E5%B8%83%E5%B8%82&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E7%8B%9B%E6%B1%9F%E5%B8%82",
+    "南陽ハウジング": f"https://2116547.re-ws.jp/rent/search/area/pref_13/?{ESWEB_COMMON}&pref=%E6%9D%B1%E4%BA%AC%E9%83%BD&city%5B%5D=112&city%5B%5D=115&city%5B%5D=204&city%5B%5D=208&city%5B%5D=219&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%96%E7%94%B0%E8%B0%B7%E5%8C%BA&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%9D%89%E4%B8%A6%E5%8C%BA&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%89%E9%B7%B9%E5%B8%82&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E8%AA%BF%E5%B8%83%E5%B8%82&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E7%8B%9B%E6%B1%9F%E5%B8%82",
+    "リベスト(吉祥寺)": f"https://www.kichijoji-chintai.com/rent/search/area/pref_13/?{ESWEB_COMMON}&pref=%E6%9D%B1%E4%BA%AC%E9%83%BD&city%5B%5D=115&city%5B%5D=203&city%5B%5D=204&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%9D%89%E4%B8%A6%E5%8C%BA&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%AD%A6%E8%94%B5%E9%87%8E%E5%B8%82&address%5B%5D=%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%89%E9%B7%B9%E5%B8%82",
+    "ワイエス・ホーム": f"https://www.yshome.jp/feature/2739/?{ESWEB_COMMON}{YS_AREA}",
 }
 
 # Seconds between requests to a site (robots.txt Crawl-delay)
-CRAWL_DELAY = {"仙川レントハウス": 5, "ワイエス・ホーム": 5, "HOME'S(重点6駅)": 1, "アットホーム(重点6駅)": 1,
-               "いい部屋ネット(重点6駅)": 1, "ピタットハウス(重点6駅)": 1}
+CRAWL_DELAY = {
+    **{name: 5 for name in ESWEB_SITES},
+    "HOME'S(重点6駅)": 1, "アットホーム(重点6駅)": 1, "いい部屋ネット(重点6駅)": 1,
+    "ピタットハウス(重点6駅)": 1, "ハトマーク(重点6駅)": 1, "東都": 1,
+}
 
 
-def curl_fetch(url: str, attempts: int = 2) -> str | None:
+def curl_fetch(url: str, attempts: int = 3) -> str | None:
     """Fetch URL with curl and browser headers. Returns HTML string or None.
 
     A transfer cut off midway still reports HTTP 200, so curl's exit code is
@@ -114,9 +139,11 @@ def curl_fetch(url: str, attempts: int = 2) -> str | None:
     extra = [h for key, headers in EXTRA_HEADERS.items() if key in url for h in headers]
     if "/wp-json/" in url:  # the es-web REST API returns 500 without a same-site Referer
         extra += ["-H", "Referer: " + re.match(r"https?://[^/]+/", url).group(0)]
-    for _ in range(attempts):
+    for attempt in range(attempts):
+        if attempt:
+            time.sleep(5 * attempt)  # connection resets are usually brief
         result = subprocess.run(
-            ["curl", "-s", "--compressed", "--max-time", "60", "-w", "\n%{http_code}",
+            ["curl", "-s", "-g", "--compressed", "--max-time", "60", "-w", "\n%{http_code}",
              *HEADERS, *extra, url],
             capture_output=True, text=True, timeout=90,
         )
@@ -313,6 +340,9 @@ def main():
         ("アットホーム(重点6駅)", parse_athome, get_next_page_url_athome),
         ("いい部屋ネット(重点6駅)", parse_eheya, get_next_page_url_eheya),
         ("ピタットハウス(重点6駅)", parse_pitat, get_next_page_url_pitat),
+        ("ハトマーク(重点6駅)", parse_hatomark, get_next_page_url_hatomark),
+        ("東都", parse_tohto, get_next_page_url_tohto),
+        ("アイホープハウス", parse_ielove, get_next_page_url_ielove),
         ("DOOR賃貸", parse_door_ac, get_next_page_url_door_ac),
     ]
 
